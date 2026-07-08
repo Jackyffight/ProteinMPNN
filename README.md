@@ -9,6 +9,17 @@ ESMFold2 geometry -> ProteinMPNN sequence expansion -> ESMFold2 refold -> mRNABE
 
 The goal is full local retraining and iteration, not remote model invocation.
 
+## Attribution
+
+The model architecture and training code under `repo/` are **ProteinMPNN** by
+Dauparas et al., *Science* 2022 (github.com/dauparas/ProteinMPNN,
+DOI 10.1126/science.add2187). `repo/` is a **subset** of that repository — the
+training code plus the inference entry point `protein_mpnn_run.py`; the examples
+and colab directories are not vendored. This
+project adds the local retraining launcher, operational scripts, dataset
+provenance, and the mRNABERT design-manifest bridge; it does not modify the
+ProteinMPNN model. Training data is the IPD `pdb_2021aug02` reference set.
+
 ## Repository Status
 
 - Git remote: `https://github.com/Jackyffight/ProteinMPNN`
@@ -87,7 +98,8 @@ scripts/run_baseline_from_scratch.sh --profile v100 --devices 0
 
 See `BASELINE_RUNBOOK.md` for the manual sequence.
 
-Smoke:
+Smoke (uses `pdb_2021aug02_sample` if provisioned, else falls back to the full
+dataset in debug mode — 50 examples — so it works right after the full download):
 
 ```bash
 cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN

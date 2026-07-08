@@ -101,9 +101,10 @@ printf '\n'
 
 if [ "$DRY_RUN" = false ]; then
   "${CMD[@]}" 2>&1 | tee "$VERSION_DIR/logs/sync_$(date +%Y%m%d%H%M%S).log"
-fi
 
-cat > "$VERSION_DIR/download_manifest.json" <<EOF
+  # Only stamp a completed-sync manifest after a real sync — a --dry-run must not
+  # leave an artifact that reads as a finished download.
+  cat > "$VERSION_DIR/download_manifest.json" <<EOF
 {
   "version_id": "$VERSION_ID",
   "synced_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -113,5 +114,7 @@ cat > "$VERSION_DIR/download_manifest.json" <<EOF
   "destination": "$DEST"
 }
 EOF
-
-echo "download_manifest: $VERSION_DIR/download_manifest.json"
+  echo "download_manifest: $VERSION_DIR/download_manifest.json"
+else
+  echo "dry-run: no download performed and no download_manifest.json written"
+fi

@@ -27,7 +27,9 @@
       "minLength": 1
     },
     "axis_method": {
-      "type": "string"
+      "type": "string",
+      "enum": ["pca_ca", "pca", "inertia", "interface_normal", "anchor", "custom"],
+      "description": "Geometry-axis method. Controlled vocabulary shared with the mRNABERT design pipeline (mRNABERT docs/reports/protein-mrna-design-pipeline.md lists PCA/inertia/interface_normal/anchor/custom); pca_ca = PCA over CA atoms."
     },
     "axis_vector": {
       "type": "array",

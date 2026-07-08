@@ -41,7 +41,7 @@ def main(args):
     torch.backends.cudnn.allow_tf32 = args.tf32
     scaler = torch.cuda.amp.GradScaler(enabled=args.mixed_precision and device.type == "cuda")
 
-    base_folder = time.strftime(args.path_for_outputs, time.localtime())
+    base_folder = args.path_for_outputs
 
     if base_folder[-1] != '/':
         base_folder += '/'
@@ -84,6 +84,11 @@ def main(args):
 
    
     if args.debug:
+        print(
+            "[debug] debug mode overrides num_examples_per_epoch, max_protein_length, and "
+            "batch_size to 50/1000/1000; pass --debug False to honor explicitly-set values.",
+            flush=True,
+        )
         args.num_examples_per_epoch = 50
         args.max_protein_length = 1000
         args.batch_size = 1000
@@ -206,8 +211,12 @@ def main(args):
                         _, loss_av_smoothed = loss_smoothed(S, log_probs, mask_for_loss)
            
                     scaler.scale(loss_av_smoothed).backward()
-                     
+
                     if args.gradient_norm > 0.0:
+                        # Unscale before clipping so the clip threshold applies to real
+                        # gradients, not GradScaler-scaled ones. scaler.step reuses this
+                        # unscale (keyed on the optimizer object) and does not repeat it.
+                        scaler.unscale_(optimizer)
                         total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.gradient_norm)
 
                     scaler.step(optimizer)
@@ -276,23 +285,29 @@ def main(args):
                 "batch_tokens": int(args.batch_size),
                 "max_protein_length": int(args.max_protein_length),
             }
+            is_best = validation_loss < best_validation_loss
+
             with open(metrics_file, 'a') as f:
                 f.write(json.dumps(epoch_metrics, sort_keys=True) + "\n")
-            with open(eval_results_file, 'w') as f:
-                json.dump(
-                    {
-                        "epoch": epoch_metrics["epoch"],
-                        "step": epoch_metrics["step"],
-                        "eval_loss": epoch_metrics["validation_loss"],
-                        "eval_perplexity": epoch_metrics["validation_perplexity"],
-                        "eval_accuracy": epoch_metrics["validation_accuracy"],
-                    },
-                    f,
-                    indent=2,
-                    sort_keys=True,
-                )
-	            
-            checkpoint_filename_last = base_folder+'model_weights/epoch_last.pt'.format(e+1, total_step)
+            # eval_results.json tracks the BEST epoch (matching model_weights/best.pt
+            # when --save_best), not the last, so a consumer reads consistent metrics.
+            if is_best or not os.path.exists(eval_results_file):
+                with open(eval_results_file, 'w') as f:
+                    json.dump(
+                        {
+                            "epoch": epoch_metrics["epoch"],
+                            "step": epoch_metrics["step"],
+                            "eval_loss": epoch_metrics["validation_loss"],
+                            "eval_perplexity": epoch_metrics["validation_perplexity"],
+                            "eval_accuracy": epoch_metrics["validation_accuracy"],
+                            "selection": "best_validation_loss",
+                        },
+                        f,
+                        indent=2,
+                        sort_keys=True,
+                    )
+
+            checkpoint_filename_last = base_folder + 'model_weights/epoch_last.pt'
             checkpoint_payload = {
                         'epoch': e+1,
                         'step': total_step,
@@ -308,12 +323,13 @@ def main(args):
                         **checkpoint_payload,
                         }, checkpoint_filename_last)
 
-            if args.save_best and validation_loss < best_validation_loss:
+            if is_best:
                 best_validation_loss = validation_loss
-                torch.save({
-                            **checkpoint_payload,
-                            'best_validation_loss': best_validation_loss,
-                            }, base_folder+'model_weights/best.pt')
+                if args.save_best:
+                    torch.save({
+                                **checkpoint_payload,
+                                'best_validation_loss': best_validation_loss,
+                                }, base_folder+'model_weights/best.pt')
 
             if (e+1) % args.save_model_every_n_epochs == 0:
                 checkpoint_filename = base_folder+'model_weights/epoch{}_step{}.pt'.format(e+1, total_step)

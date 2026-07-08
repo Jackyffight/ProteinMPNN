@@ -1,0 +1,35 @@
+{
+  "design_id": "targetA_axis0_mpnn000001",
+  "target_id": "targetA",
+  "backbone_id": "targetA_esmfold2_seed0",
+  "axis_method": "pca_ca",
+  "axis_vector": [0.12, -0.98, 0.15],
+  "anchor_residues": [
+    {"chain": "A", "residue": 42},
+    {"chain": "A", "residue": 117}
+  ],
+  "fixed_positions": [
+    {"chain": "A", "residue": 23},
+    {"chain": "A", "residue": 24}
+  ],
+  "designed_chains": ["A"],
+  "mpnn_checkpoint": "runs/proteinmpnn-v48-noise020-v100/model_weights/best.pt",
+  "mpnn_params": {
+    "num_neighbors": 48,
+    "backbone_noise": 0.2,
+    "temperature": 0.1
+  },
+  "protein_sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ",
+  "mpnn_score": 0.73,
+  "fold2_revision": "pinned-esmfold2-revision",
+  "fold2_metrics": {
+    "plddt_mean": 0.0,
+    "ptm": 0.0,
+    "iptm": 0.0
+  },
+  "mrna_objective": {
+    "species": "human",
+    "utr_policy": "fixed_or_designed",
+    "cds_policy": "codon_optimized_candidate"
+  }
+}

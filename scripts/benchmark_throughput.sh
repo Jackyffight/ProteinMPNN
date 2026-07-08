@@ -38,11 +38,17 @@ case "$MODE" in
 esac
 NUM_EXAMPLES="${NUM_EXAMPLES:-$DEFAULT_EXAMPLES}"
 
+# Smoke benchmark uses the sample dir if provisioned, else the full dataset (smoke
+# preset runs in debug mode, 50 examples). quick/full only need the full dataset.
 if [ ! -d "$SAMPLE_DATA_DIR" ]; then
-  echo "Sample data dir not found: $SAMPLE_DATA_DIR" >&2
-  exit 1
+  SAMPLE_DATA_DIR="$FULL_DATA_DIR"
 fi
-if [ "$MODE" != "smoke" ] && [ ! -d "$FULL_DATA_DIR" ]; then
+if [ "$MODE" = "smoke" ]; then
+  if [ ! -d "$SAMPLE_DATA_DIR" ]; then
+    echo "No data dir found for smoke benchmark: $SAMPLE_DATA_DIR" >&2
+    exit 1
+  fi
+elif [ ! -d "$FULL_DATA_DIR" ]; then
   echo "Full data dir not found: $FULL_DATA_DIR" >&2
   exit 1
 fi

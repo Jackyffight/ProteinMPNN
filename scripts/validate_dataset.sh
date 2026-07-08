@@ -18,8 +18,21 @@ for required in README list.csv valid_clusters.txt test_clusters.txt pdb; do
   fi
 done
 
+EXPECTED_STRUCTURE_FILES="${EXPECTED_STRUCTURE_FILES:-869544}"
+STRUCTURE_FILES="$(find "$DATA_DIR/pdb" -type f | wc -l | tr -d ' ')"
+
 echo "dataset_dir: $DATA_DIR"
 echo "list_rows: $(wc -l < "$DATA_DIR/list.csv")"
 echo "valid_clusters: $(wc -l < "$DATA_DIR/valid_clusters.txt")"
 echo "test_clusters: $(wc -l < "$DATA_DIR/test_clusters.txt")"
-echo "structure_files: $(find "$DATA_DIR/pdb" -type f | wc -l)"
+echo "structure_files: $STRUCTURE_FILES (expected $EXPECTED_STRUCTURE_FILES)"
+
+# Assert the pinned structure-file count so a truncated/interrupted extraction fails
+# here instead of silently training on a partial dataset. The archive sha256 is
+# verified at download/stage time; this guards the extracted result.
+if [ "$STRUCTURE_FILES" != "$EXPECTED_STRUCTURE_FILES" ]; then
+  echo "Error: structure file count $STRUCTURE_FILES != expected $EXPECTED_STRUCTURE_FILES;" \
+       "extraction is incomplete or corrupt. Re-extract, or set EXPECTED_STRUCTURE_FILES to override." >&2
+  exit 1
+fi
+echo "dataset validation OK"

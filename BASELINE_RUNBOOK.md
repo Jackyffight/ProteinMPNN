@@ -62,7 +62,8 @@ Validate dataset layout:
 scripts/validate_dataset.sh
 ```
 
-Smoke train:
+Smoke train (uses the sample dataset if present, else the full dataset in debug
+mode — 50 examples — so this works immediately after the full download):
 
 ```bash
 DEVICES=0 scripts/smoke_train.sh

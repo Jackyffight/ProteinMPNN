@@ -46,18 +46,23 @@ depend on Hugging Face or on remote model APIs.
 
 ## Validation Commands
 
-Fast download or rebuild the full archive. This uses `aria2c` when available
-and falls back to multi-threaded HTTP byte-range parts:
+Download or rebuild the full archive. The **canonical** downloader is
+`download_dataset_parts.sh` — it is resumable (verifies size+sha256 and early-exits
+if the archive is already complete, appends partial byte-range parts, and takes a
+lock), so an interrupted run does not re-fetch all 18 GB:
 
 ```bash
 cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
-scripts/download_dataset_50.sh --parallel 10 --extract
+scripts/download_dataset_parts.sh --extract
 ```
 
-Force the curl byte-range backend and tune concurrency if the server is flaky:
+`download_dataset_50.sh` (a fixed 50-part variant, `aria2c` when available) and
+`download_dataset_fast.sh` also exist; prefer the resumable `download_dataset_parts.sh`
+above. All three gate extraction behind the same size + sha256 check, so integrity
+is never at risk — only re-download cost differs.
 
 ```bash
-scripts/download_dataset_50.sh --parallel 6 --extract
+scripts/download_dataset_50.sh --parallel 6 --extract   # alternative, non-resumable
 ```
 
 The curl backend writes parts under:

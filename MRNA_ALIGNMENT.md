@@ -6,7 +6,7 @@
 - Training launcher: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/run_train.sh`
 - Design manifest schema: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/design_manifest.schema.json`
 - Full training data: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02`
-- Smoke-test data: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02_sample`
+- Smoke-test data (optional): `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02_sample` — if absent, smoke falls back to the full dataset in debug mode (50 examples). The upstream sample archive (47 MB) is `https://files.ipd.uw.edu/pub/training_sets/pdb_2021aug02_sample.tar.gz`.
 - Full tarball: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02.tar.gz`
 
 The GitHub git clone was unreliable in this environment, so the local repo is a
@@ -126,7 +126,7 @@ The shared contract should be one JSONL row per designed protein sequence:
     "backbone_noise": 0.2,
     "temperature": 0.1
   },
-  "protein_sequence": "M...",
+  "protein_sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ",
   "mpnn_score": 0.73,
   "fold2_revision": "pinned-esmfold2-revision",
   "fold2_metrics": {
@@ -143,7 +143,27 @@ The shared contract should be one JSONL row per designed protein sequence:
 ```
 
 Use `ProteinMPNN/design_manifest.schema.json` as the first machine-readable
-version of this contract.
+version of this contract, and `ProteinMPNN/design_manifest.example.json` as a
+validating reference row (checked in `tests/test_project_contract.py`).
+
+### Field mapping to mRNABERT's design tables
+
+The manifest is the bridge, so field names should be reconciled with the consumer.
+Current correspondence between this manifest and the mRNABERT design docs
+(`docs/reports/protein-mrna-design-pipeline.md` and
+`integrated-protein-mrna-reasoning-system.md`, which define the axis/geometry
+table and field names):
+
+| ProteinMPNN manifest | mRNABERT design table | Note |
+|---|---|---|
+| `axis_method` (enum) | `axis_method` (PCA/inertia/interface_normal/anchor/custom) | `pca_ca` = PCA over CA atoms |
+| `fixed_positions` | `fixed_residues` | rename on the mRNABERT side |
+| `fold2_revision` | `fold_model_revision` | pinned ESMFold2 revision |
+| `fold2_metrics.plddt_mean` | `confidence_plddt` | |
+| `mpnn_score` | `mpnn_logprob` | ProteinMPNN proposal quality |
+
+Where names differ, the consumer maps by this table; align them before either
+contract is treated as stable.
 
 The mRNA side should consume this manifest and produce either:
 

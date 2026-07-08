@@ -1,8 +1,11 @@
+import importlib.util
+import json
 from pathlib import Path
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+HAS_JSONSCHEMA = importlib.util.find_spec("jsonschema") is not None
 
 
 class LauncherContractTest(unittest.TestCase):
@@ -32,8 +35,10 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("download_logs", script)
         self.assertIn("pdb_2021aug02.tar.gz", script)
         self.assertIn("18037128263", script)
-        self.assertIn("/data00/home/wangzhi.wit/models/datasets/proteinmpnn", stage_script)
+        # The staging script verifies integrity; it may probe several host-specific
+        # source paths, so assert the integrity check rather than an exact host path.
         self.assertIn("sha256sum", stage_script)
+        self.assertIn("pdb_2021aug02", stage_script)
 
     def test_latest_pdb_dataset_track_is_scaffolded(self):
         sync_script = (ROOT / "scripts/sync_latest_pdb_assemblies.sh").read_text(encoding="utf-8")
@@ -104,6 +109,58 @@ class TrainingContractTest(unittest.TestCase):
         self.assertIn("--num_loader_workers", training)
         self.assertIn("--prefetch_workers", training)
         self.assertIn("--tf32", training)
+
+    def test_amp_gradient_clip_unscales_before_clipping(self):
+        # Regression: clipping must run on real (unscaled) gradients under AMP.
+        training = (ROOT / "repo/training/training.py").read_text(encoding="utf-8")
+        unscale = training.index("scaler.unscale_(optimizer)")
+        clip = training.index("clip_grad_norm_", unscale)
+        step = training.index("scaler.step(optimizer)", clip)
+        self.assertTrue(unscale < clip < step, "expected order: unscale_ -> clip_grad_norm_ -> scaler.step")
+
+
+class DesignManifestSchemaTest(unittest.TestCase):
+    """Actually exercise the ProteinMPNN->mRNABERT contract, not just its file text."""
+
+    SCHEMA_PATH = ROOT / "design_manifest.schema.json"
+    EXAMPLE_PATH = ROOT / "design_manifest.example.json"
+
+    def _load(self, path):
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def test_schema_and_example_are_valid_json(self):
+        schema = self._load(self.SCHEMA_PATH)
+        example = self._load(self.EXAMPLE_PATH)
+        self.assertEqual(schema.get("$schema"), "https://json-schema.org/draft/2020-12/schema")
+        self.assertIn("design_id", schema.get("required", []))
+        self.assertIsInstance(example, dict)
+
+    def test_example_satisfies_the_contract_dependency_free(self):
+        # Always-on structural guard (no third-party dependency): the real rules the
+        # downstream mRNABERT consumer relies on.
+        schema = self._load(self.SCHEMA_PATH)
+        example = self._load(self.EXAMPLE_PATH)
+        for key in schema["required"]:
+            self.assertIn(key, example, f"example missing required field: {key}")
+        self.assertRegex(example["protein_sequence"], r"^[ACDEFGHIKLMNPQRSTVWYX]+$")
+        self.assertIn("species", example["mrna_objective"])
+        self.assertIn("cds_policy", example["mrna_objective"])
+        self.assertIn(example["axis_method"], schema["properties"]["axis_method"]["enum"])
+
+    @unittest.skipUnless(HAS_JSONSCHEMA, "jsonschema not installed")
+    def test_example_validates_against_schema_and_bad_instance_is_rejected(self):
+        from jsonschema import Draft202012Validator
+
+        schema = self._load(self.SCHEMA_PATH)
+        example = self._load(self.EXAMPLE_PATH)
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema)
+        self.assertEqual(list(validator.iter_errors(example)), [], "canonical example must validate")
+
+        bad = dict(example)
+        bad["protein_sequence"] = "M...invalid"   # '.' not in the AA alphabet
+        del bad["mrna_objective"]                  # drop a required field
+        self.assertTrue(list(validator.iter_errors(bad)), "a malformed manifest must be rejected")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,6 @@ echo "Latest metrics:"
 tail -n 1 "$METRICS"
 
 if [ -f "$EVAL_RESULTS" ]; then
-  echo "Eval results:"
+  echo "Eval results (best epoch by validation loss):"
   cat "$EVAL_RESULTS"
 fi

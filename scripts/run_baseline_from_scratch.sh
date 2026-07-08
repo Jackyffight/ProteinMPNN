@@ -103,7 +103,7 @@ DEVICES="$DEVICES" RUN_NAME="proteinmpnn-full-sanity-${TIMESTAMP}" scripts/full_
 if [ "$RUN_BENCHMARK" = true ]; then
   echo "=== throughput benchmark: $BENCHMARK_MODE ==="
   DEVICES="$DEVICES" scripts/benchmark_throughput.sh "$BENCHMARK_MODE"
-  LATEST_BENCHMARK="$(find runs/benchmarks -maxdepth 1 -type d -name "throughput-${BENCHMARK_MODE}-*" | sort | tail -n 1)"
+  LATEST_BENCHMARK="$(find "$PROTEINMPNN_OUTPUT_ROOT/benchmarks" -maxdepth 1 -type d -name "throughput-${BENCHMARK_MODE}-*" 2>/dev/null | sort | tail -n 1 || true)"
   if [ -n "$LATEST_BENCHMARK" ]; then
     scripts/print_throughput_benchmark.sh "$LATEST_BENCHMARK"
   fi

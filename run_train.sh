@@ -8,7 +8,7 @@ fi
 MODE="${PROTEINMPNN_MODE:-full}"
 ENV_NAME="${PROTEINMPNN_ENV:-devbox}"
 PYTHON_BIN="${PROTEINMPNN_PYTHON:-${PYTHON_BIN:-python}}"
-DATA_ROOT="$PROTEINMPNN_DATA_ROOT"
+DATA_ROOT="${PROTEINMPNN_DATA_ROOT:-}"
 DATA_DIR="${DATA_DIR:-}"
 OUTPUT_ROOT="${PROTEINMPNN_OUTPUT_ROOT:-$ROOT/runs}"
 OUTPUT_DIR="${OUTPUT_DIR:-}"
@@ -52,7 +52,8 @@ Launcher args:
   --output-root <dir>                Workspace root. Default: ProteinMPNN/runs.
   --output-dir <dir>                 Exact output directory. Overrides --output-root/--run-name.
   --run-name <name>                  Run name under --output-root.
-  --devices <list>                   CUDA_VISIBLE_DEVICES, e.g. 0 or 0,1.
+  --devices <n>                      CUDA_VISIBLE_DEVICES. Training uses a single GPU (cuda:0);
+                                     multi-GPU/DDP is not implemented, so passing a list uses only the first.
   --python <path>                    Python binary. Default: python.
   --resume <checkpoint>              Resume from model_weights/epoch_last.pt or another checkpoint.
   --install-deps                     pip install ProteinMPNN/requirements.txt before launch.
@@ -130,7 +131,16 @@ fi
 TIMESTAMP="$(date +%Y%m%d%H%M%S)"
 case "$MODE" in
   smoke)
-    DATA_DIR="${DATA_DIR:-$DATA_ROOT/pdb_2021aug02_sample}"
+    # Prefer the sample dir if it was provisioned; otherwise fall back to the full
+    # dataset (smoke runs with DEBUG=True, which subsets to 50 examples regardless),
+    # so the documented first check works without a separately-downloaded sample.
+    if [ -z "$DATA_DIR" ]; then
+      if [ -n "$DATA_ROOT" ] && [ -d "$DATA_ROOT/pdb_2021aug02_sample" ]; then
+        DATA_DIR="$DATA_ROOT/pdb_2021aug02_sample"
+      else
+        DATA_DIR="$DATA_ROOT/pdb_2021aug02"
+      fi
+    fi
     NUM_EPOCHS="${NUM_EPOCHS:-1}"
     NUM_EXAMPLES="${NUM_EXAMPLES:-50}"
     BATCH_TOKENS="${BATCH_TOKENS:-1000}"
