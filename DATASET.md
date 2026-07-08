@@ -51,13 +51,13 @@ and falls back to multi-threaded HTTP byte-range parts:
 
 ```bash
 cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
-scripts/download_dataset_fast.sh --extract
+scripts/download_dataset_50.sh --parallel 10 --extract
 ```
 
 Force the curl byte-range backend and tune concurrency if the server is flaky:
 
 ```bash
-scripts/download_dataset_fast.sh --method curl --part-count 50 --parallel 6 --extract
+scripts/download_dataset_50.sh --parallel 6 --extract
 ```
 
 The curl backend writes parts under:
