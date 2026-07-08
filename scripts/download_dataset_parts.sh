@@ -19,12 +19,12 @@ usage() {
 Usage:
   scripts/download_dataset_parts.sh [options]
 
-Downloads the official ProteinMPNN PDB training archive using HTTP range
+Downloads the upstream reference ProteinMPNN PDB training archive using HTTP range
 requests, verifies the merged SHA256, and optionally extracts it.
 
 Options:
   --data-root <dir>       Dataset root. Default: ../datasets/proteinmpnn.
-  --url <url>             Archive URL. Default: official pdb_2021aug02 tarball.
+  --url <url>             Archive URL. Default: upstream pdb_2021aug02 tarball.
   --archive-name <name>   Final archive name. Default: pdb_2021aug02.tar.gz.
   --expected-size <bytes> Expected archive size. Required for range math.
   --sha256 <hex>          Expected final archive SHA256.

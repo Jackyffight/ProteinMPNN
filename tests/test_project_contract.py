@@ -30,6 +30,16 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("pdb_2021aug02.tar.gz", script)
         self.assertIn("18037128263", script)
 
+    def test_latest_pdb_dataset_track_is_scaffolded(self):
+        sync_script = (ROOT / "scripts/sync_latest_pdb_assemblies.sh").read_text(encoding="utf-8")
+        versions_doc = (ROOT / "DATASET_VERSIONS.md").read_text(encoding="utf-8")
+
+        self.assertIn("files.wwpdb.org/pub/pdb/data/assemblies/mmCIF/divided", sync_script)
+        self.assertIn("rsync.rcsb.org", sync_script)
+        self.assertIn("--dry-run", sync_script)
+        self.assertIn("proteinmpnn_pdb_latest_<YYYYMMDD>", versions_doc)
+        self.assertIn("Upstream Reference Baseline", versions_doc)
+
 
 class TrainingContractTest(unittest.TestCase):
     def test_training_writes_manifest_metrics_and_best_checkpoint(self):

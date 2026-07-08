@@ -15,6 +15,14 @@ scripts/full_train_v100.sh
 scripts/print_latest_metrics.sh runs/<run-name>
 ```
 
+Latest PDB owned dataset track:
+
+```bash
+scripts/init_dataset_version.sh
+scripts/sync_latest_pdb_assemblies.sh --dry-run
+scripts/inspect_dataset_version.sh ../datasets/proteinmpnn_custom/proteinmpnn_pdb_latest_YYYYMMDD
+```
+
 For A100:
 
 ```bash

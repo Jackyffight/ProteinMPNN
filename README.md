@@ -44,11 +44,19 @@ Known archive SHA256:
 
 See `DATASET.md` for provenance and expected layout.
 
-To download or rebuild the archive from HTTP range parts:
+To download or rebuild the upstream reference archive from HTTP range parts:
 
 ```bash
 cd /data00/home/wangzhi.wit/models/ProteinMPNN
 scripts/download_dataset_parts.sh --extract
+```
+
+For our own latest-PDB dataset track:
+
+```bash
+cd /data00/home/wangzhi.wit/models/ProteinMPNN
+scripts/init_dataset_version.sh
+scripts/sync_latest_pdb_assemblies.sh --dry-run
 ```
 
 ## Environment

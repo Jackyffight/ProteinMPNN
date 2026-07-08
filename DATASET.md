@@ -1,13 +1,13 @@
 # ProteinMPNN Dataset
 
-## Source
+## Upstream Reference Source
 
 ```text
 https://files.ipd.uw.edu/pub/training_sets/pdb_2021aug02.tar.gz
 ```
 
-The archive is the public ProteinMPNN PDB training set used by the upstream
-training scripts.
+The archive is the public upstream reference ProteinMPNN PDB training set used
+by the upstream training scripts. It is not the current complete PDB archive.
 
 ## Local Layout
 
@@ -77,3 +77,16 @@ Full archive checksum, expensive because the file is 17G:
 ```bash
 sha256sum /data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02.tar.gz
 ```
+
+## Latest PDB Track
+
+Create and sync an owned latest-PDB dataset version:
+
+```bash
+cd /data00/home/wangzhi.wit/models/ProteinMPNN
+scripts/init_dataset_version.sh
+scripts/sync_latest_pdb_assemblies.sh --dry-run
+```
+
+Remove `--dry-run` to start syncing current wwPDB biological assembly mmCIF
+files. See `DATASET_VERSIONS.md` for the full two-track plan.
