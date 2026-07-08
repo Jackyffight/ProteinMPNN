@@ -46,14 +46,21 @@ depend on Hugging Face or on remote model APIs.
 
 ## Validation Commands
 
-Download or rebuild the full archive from HTTP byte-range parts:
+Fast download or rebuild the full archive. This uses `aria2c` when available
+and falls back to multi-threaded HTTP byte-range parts:
 
 ```bash
 cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
-scripts/download_dataset_parts.sh --extract
+scripts/download_dataset_fast.sh --extract
 ```
 
-By default this writes parts under:
+Force the curl byte-range backend and tune concurrency if the server is flaky:
+
+```bash
+scripts/download_dataset_fast.sh --method curl --part-count 32 --parallel 8 --extract
+```
+
+The curl backend writes parts under:
 
 ```text
 /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/parts/

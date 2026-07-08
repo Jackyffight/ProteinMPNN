@@ -6,14 +6,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/env_nas.sh"
 
 URL="https://files.ipd.uw.edu/pub/training_sets/pdb_2021aug02.tar.gz"
-DATA_ROOT="$PROTEINMPNN_DATA_ROOT"
+DATA_ROOT="${DATA_ROOT:-$PROTEINMPNN_DATA_ROOT}"
 ARCHIVE_NAME="pdb_2021aug02.tar.gz"
 EXPECTED_SIZE="18037128263"
 EXPECTED_SHA256="84d51d0b9224011db8deeab8b83e96f092830aaf6a1f538b1d94b0144f295714"
-PART_COUNT=8
-PARALLEL=2
-CURL_RETRIES=20
-CURL_RETRY_DELAY=10
+PART_COUNT="${PART_COUNT:-32}"
+PARALLEL="${PARALLEL:-8}"
+CURL_RETRIES="${CURL_RETRIES:-50}"
+CURL_RETRY_DELAY="${CURL_RETRY_DELAY:-5}"
 EXTRACT=false
 FORCE=false
 
@@ -31,10 +31,10 @@ Options:
   --archive-name <name>   Final archive name. Default: pdb_2021aug02.tar.gz.
   --expected-size <bytes> Expected archive size. Required for range math.
   --sha256 <hex>          Expected final archive SHA256.
-  --part-count <n>        Number of byte ranges. Default: 8.
-  --parallel <n>          Concurrent range downloads. Default: 2.
-  --curl-retries <n>      Retries per range chunk. Default: 20.
-  --retry-delay <sec>     Delay between retries. Default: 10.
+  --part-count <n>        Number of byte ranges. Default: 32.
+  --parallel <n>          Concurrent range downloads. Default: 8.
+  --curl-retries <n>      Retries per range chunk. Default: 50.
+  --retry-delay <sec>     Delay between retries. Default: 5.
   --extract               Extract archive under --data-root after verification.
   --force                 Redownload parts and rebuild archive.
   -h, --help              Show this help.
@@ -43,12 +43,6 @@ Environment overrides:
   DATA_ROOT, PART_COUNT, PARALLEL, CURL_RETRIES, CURL_RETRY_DELAY
 EOF
 }
-
-DATA_ROOT="${DATA_ROOT:-$DATA_ROOT}"
-PART_COUNT="${PART_COUNT:-$PART_COUNT}"
-PARALLEL="${PARALLEL:-$PARALLEL}"
-CURL_RETRIES="${CURL_RETRIES:-$CURL_RETRIES}"
-CURL_RETRY_DELAY="${CURL_RETRY_DELAY:-$CURL_RETRY_DELAY}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
