@@ -16,6 +16,7 @@ Recommended order:
 
 ```bash
 scripts/run_baseline_from_scratch.sh --profile v100 --devices 0 --no-full
+scripts/stage_existing_dataset.sh
 scripts/download_dataset_parts.sh --extract
 scripts/validate_dataset.sh
 scripts/smoke_train.sh
@@ -26,6 +27,11 @@ scripts/benchmark_throughput.sh quick
 scripts/print_throughput_benchmark.sh runs/benchmarks/<benchmark-dir>
 scripts/print_latest_metrics.sh runs/<run-name>
 ```
+
+Prefer `stage_existing_dataset.sh` when an existing `/data00` copy is visible on
+the host. The public IPD archive is 17GB and can be slow or return transient
+504 errors; `download_dataset_parts.sh` is resumable, but staging a local copy is
+usually much faster.
 
 Latest PDB owned dataset track:
 

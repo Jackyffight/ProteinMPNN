@@ -38,10 +38,22 @@ scripts/run_baseline_from_scratch.sh --profile v100 --devices 0 --no-full
 
 ## 2. Manual Step-by-Step
 
+Fast path if the host can see an existing local copy:
+
+```bash
+scripts/stage_existing_dataset.sh
+```
+
 Download and extract upstream reference data:
 
 ```bash
 scripts/download_dataset_parts.sh --extract
+```
+
+If the public IPD source is unstable, lower parallelism:
+
+```bash
+scripts/download_dataset_parts.sh --parallel 1 --extract
 ```
 
 Validate dataset layout:

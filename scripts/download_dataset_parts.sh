@@ -11,7 +11,9 @@ ARCHIVE_NAME="pdb_2021aug02.tar.gz"
 EXPECTED_SIZE="18037128263"
 EXPECTED_SHA256="84d51d0b9224011db8deeab8b83e96f092830aaf6a1f538b1d94b0144f295714"
 PART_COUNT=8
-PARALLEL=4
+PARALLEL=2
+CURL_RETRIES=20
+CURL_RETRY_DELAY=10
 EXTRACT=false
 FORCE=false
 
@@ -30,19 +32,23 @@ Options:
   --expected-size <bytes> Expected archive size. Required for range math.
   --sha256 <hex>          Expected final archive SHA256.
   --part-count <n>        Number of byte ranges. Default: 8.
-  --parallel <n>          Concurrent range downloads. Default: 4.
+  --parallel <n>          Concurrent range downloads. Default: 2.
+  --curl-retries <n>      Retries per range chunk. Default: 20.
+  --retry-delay <sec>     Delay between retries. Default: 10.
   --extract               Extract archive under --data-root after verification.
   --force                 Redownload parts and rebuild archive.
   -h, --help              Show this help.
 
 Environment overrides:
-  DATA_ROOT, PART_COUNT, PARALLEL
+  DATA_ROOT, PART_COUNT, PARALLEL, CURL_RETRIES, CURL_RETRY_DELAY
 EOF
 }
 
 DATA_ROOT="${DATA_ROOT:-$DATA_ROOT}"
 PART_COUNT="${PART_COUNT:-$PART_COUNT}"
 PARALLEL="${PARALLEL:-$PARALLEL}"
+CURL_RETRIES="${CURL_RETRIES:-$CURL_RETRIES}"
+CURL_RETRY_DELAY="${CURL_RETRY_DELAY:-$CURL_RETRY_DELAY}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -53,6 +59,8 @@ while [ $# -gt 0 ]; do
     --sha256) EXPECTED_SHA256="$2"; shift 2 ;;
     --part-count|--part_count) PART_COUNT="$2"; shift 2 ;;
     --parallel) PARALLEL="$2"; shift 2 ;;
+    --curl-retries|--curl_retries) CURL_RETRIES="$2"; shift 2 ;;
+    --retry-delay|--retry_delay) CURL_RETRY_DELAY="$2"; shift 2 ;;
     --extract) EXTRACT=true; shift ;;
     --force) FORCE=true; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -80,9 +88,18 @@ if ! [[ "$PARALLEL" =~ ^[0-9]+$ ]] || [ "$PARALLEL" -lt 1 ]; then
   echo "Error: --parallel must be a positive integer." >&2
   exit 1
 fi
+if ! [[ "$CURL_RETRIES" =~ ^[0-9]+$ ]]; then
+  echo "Error: --curl-retries must be a non-negative integer." >&2
+  exit 1
+fi
+if ! [[ "$CURL_RETRY_DELAY" =~ ^[0-9]+$ ]]; then
+  echo "Error: --retry-delay must be a non-negative integer." >&2
+  exit 1
+fi
 
 ARCHIVE="$DATA_ROOT/$ARCHIVE_NAME"
 PART_DIR="$DATA_ROOT/parts"
+LOG_DIR="$DATA_ROOT/download_logs"
 LOCK_DIR="$DATA_ROOT/.download-${ARCHIVE_NAME}.lock"
 PART_SIZE=$(( (EXPECTED_SIZE + PART_COUNT - 1) / PART_COUNT ))
 DIGITS=${#PART_COUNT}
@@ -90,12 +107,22 @@ if [ "$DIGITS" -lt 2 ]; then
   DIGITS=2
 fi
 
-mkdir -p "$DATA_ROOT" "$PART_DIR"
+mkdir -p "$DATA_ROOT" "$PART_DIR" "$LOG_DIR"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   echo "Error: another download appears to be active: $LOCK_DIR" >&2
+  if [ -f "$LOCK_DIR/owner" ]; then
+    echo "Owner:"
+    cat "$LOCK_DIR/owner"
+  fi
   exit 1
 fi
+{
+  echo "pid=$$"
+  echo "host=$(hostname 2>/dev/null || echo unknown)"
+  echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > "$LOCK_DIR/owner"
 cleanup() {
+  rm -f "$LOCK_DIR/owner" 2>/dev/null || true
   rmdir "$LOCK_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -157,8 +184,15 @@ download_part() {
   printf -v suffix "%0${DIGITS}d" "$index"
   local part="$PART_DIR/part_$suffix"
   local tmp="$part.tmp.$$"
+  local log="$LOG_DIR/part_$suffix.log"
   local current
+  local attempts=0
+  local remaining
+  local tmp_size
+  local rc
   current="$(file_size "$part")"
+  rm -f "$part.tmp."*
+  : > "$log"
 
   if [ "$current" -eq "$expected" ]; then
     echo "part_$suffix already complete ($expected bytes)"
@@ -170,32 +204,59 @@ download_part() {
     current=0
   fi
 
-  local range_start=$(( start + current ))
-  local range="${range_start}-${end}"
-  echo "Downloading part_$suffix range=$range current=$current expected=$expected"
-  rm -f "$tmp"
-  curl \
-    --fail \
-    --location \
-    --retry 8 \
-    --retry-delay 5 \
-    --connect-timeout 30 \
-    --range "$range" \
-    --output "$tmp" \
-    "$URL"
-
-  if [ "$current" -gt 0 ]; then
-    cat "$tmp" >> "$part"
+  while [ "$current" -lt "$expected" ]; do
+    local range_start=$(( start + current ))
+    local range="${range_start}-${end}"
+    remaining=$(( expected - current ))
+    echo "Downloading part_$suffix range=$range current=$current expected=$expected log=$log"
     rm -f "$tmp"
-  else
-    mv "$tmp" "$part"
-  fi
 
-  current="$(file_size "$part")"
-  if [ "$current" -ne "$expected" ]; then
-    echo "Error: part_$suffix size mismatch: got $current expected $expected" >&2
-    exit 1
-  fi
+    set +e
+    curl \
+      --fail \
+      --location \
+      --http1.1 \
+      --silent \
+      --show-error \
+      --retry "$CURL_RETRIES" \
+      --retry-delay "$CURL_RETRY_DELAY" \
+      --retry-connrefused \
+      --connect-timeout 30 \
+      --speed-limit 1024 \
+      --speed-time 300 \
+      --range "$range" \
+      --output "$tmp" \
+      "$URL" >> "$log" 2>&1
+    rc=$?
+    set -e
+
+    tmp_size="$(file_size "$tmp")"
+    if [ "$tmp_size" -gt "$remaining" ]; then
+      echo "Error: part_$suffix downloaded too many bytes: got chunk $tmp_size remaining $remaining" >&2
+      echo "See log: $log" >&2
+      rm -f "$tmp"
+      exit 1
+    fi
+    if [ "$tmp_size" -gt 0 ]; then
+      cat "$tmp" >> "$part"
+      rm -f "$tmp"
+      current="$(file_size "$part")"
+      echo "part_$suffix progress: $current/$expected bytes"
+    fi
+
+    if [ "$rc" -eq 0 ] && [ "$current" -eq "$expected" ]; then
+      return 0
+    fi
+
+    attempts=$(( attempts + 1 ))
+    if [ "$attempts" -gt "$CURL_RETRIES" ]; then
+      echo "Error: part_$suffix failed after $attempts attempts; current=$current expected=$expected" >&2
+      echo "See log: $log" >&2
+      exit 1
+    fi
+    echo "part_$suffix retry $attempts/$CURL_RETRIES after curl exit $rc; current=$current expected=$expected"
+    sleep "$CURL_RETRY_DELAY"
+  done
 }
 
 echo "Downloading ProteinMPNN dataset archive in parts"
@@ -205,19 +266,29 @@ echo "archive: $ARCHIVE"
 echo "expected_size: $EXPECTED_SIZE"
 echo "part_count: $PART_COUNT"
 echo "parallel: $PARALLEL"
+echo "logs: $LOG_DIR"
 
 pids=()
+failures=0
 for ((i = 0; i < PART_COUNT; i++)); do
   download_part "$i" &
   pids+=("$!")
   if [ "${#pids[@]}" -ge "$PARALLEL" ]; then
-    wait "${pids[0]}"
+    if ! wait "${pids[0]}"; then
+      failures=$(( failures + 1 ))
+    fi
     pids=("${pids[@]:1}")
   fi
 done
 for pid in "${pids[@]}"; do
-  wait "$pid"
+  if ! wait "$pid"; then
+    failures=$(( failures + 1 ))
+  fi
 done
+if [ "$failures" -gt 0 ]; then
+  echo "Error: $failures part download(s) failed. Re-run the same command to resume." >&2
+  exit 1
+fi
 
 echo "Merging parts into: $ARCHIVE"
 rm -f "$ARCHIVE.tmp"

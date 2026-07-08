@@ -23,12 +23,17 @@ class LauncherContractTest(unittest.TestCase):
 
     def test_dataset_download_script_uses_range_parts_and_checksum(self):
         script = (ROOT / "scripts/download_dataset_parts.sh").read_text(encoding="utf-8")
+        stage_script = (ROOT / "scripts/stage_existing_dataset.sh").read_text(encoding="utf-8")
 
         self.assertIn("--range", script)
         self.assertIn("EXPECTED_SHA256", script)
         self.assertIn("EXPECTED_SIZE", script)
+        self.assertIn("--http1.1", script)
+        self.assertIn("download_logs", script)
         self.assertIn("pdb_2021aug02.tar.gz", script)
         self.assertIn("18037128263", script)
+        self.assertIn("/data00/home/wangzhi.wit/models/datasets/proteinmpnn", stage_script)
+        self.assertIn("sha256sum", stage_script)
 
     def test_latest_pdb_dataset_track_is_scaffolded(self):
         sync_script = (ROOT / "scripts/sync_latest_pdb_assemblies.sh").read_text(encoding="utf-8")

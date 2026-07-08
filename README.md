@@ -48,8 +48,12 @@ To download or rebuild the upstream reference archive from HTTP range parts:
 
 ```bash
 cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
+scripts/stage_existing_dataset.sh
 scripts/download_dataset_parts.sh --extract
 ```
+
+Prefer `stage_existing_dataset.sh` if this host can see an existing local copy.
+The public IPD source can be slow and occasionally returns transient 504 errors.
 
 For our own latest-PDB dataset track:
 
