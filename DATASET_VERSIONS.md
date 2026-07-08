@@ -25,7 +25,7 @@ https://files.ipd.uw.edu/pub/training_sets/pdb_2021aug02.tar.gz
 Local processed dataset:
 
 ```text
-/data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02
 ```
 
 This is a ProteinMPNN upstream reference dataset, not the current complete PDB
@@ -58,7 +58,7 @@ in mmCIF format under `/pub/pdb/data/assemblies/mmCIF`.
 Local raw layout:
 
 ```text
-/data00/home/wangzhi.wit/models/datasets/proteinmpnn_custom/
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn_custom/
   proteinmpnn_pdb_latest_<YYYYMMDD>/
     README.md
     dataset_manifest.json

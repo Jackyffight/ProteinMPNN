@@ -3,7 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DATA_ROOT="${DATA_ROOT:-$REPO_ROOT/../datasets/proteinmpnn_custom}"
+source "$SCRIPT_DIR/env_nas.sh"
+DATA_ROOT="${DATA_ROOT:-$PROTEINMPNN_CUSTOM_DATA_ROOT}"
 VERSION_ID="${1:-proteinmpnn_pdb_latest_$(date +%Y%m%d)}"
 VERSION_DIR="$DATA_ROOT/$VERSION_ID"
 

@@ -5,7 +5,7 @@ This runbook trains the upstream-reference ProteinMPNN baseline from zero.
 ## 0. Environment
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 conda create -n proteinmpnn python=3.10 -y
 conda activate proteinmpnn
 pip install -r ProteinMPNN/requirements.txt
@@ -19,14 +19,14 @@ Use the CUDA PyTorch wheel that matches the training host.
 V100:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/run_baseline_from_scratch.sh --profile v100 --devices 0
 ```
 
 A100:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/run_baseline_from_scratch.sh --profile a100 --devices 0
 ```
 

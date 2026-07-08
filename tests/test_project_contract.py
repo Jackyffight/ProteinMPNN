@@ -63,6 +63,15 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("full_train_${PROFILE}.sh", script)
         self.assertIn("Baseline From-Scratch Runbook", runbook)
 
+    def test_nas_environment_paths_are_pinned(self):
+        env_script = (ROOT / "scripts/env_nas.sh").read_text(encoding="utf-8")
+        runbook = (ROOT / "BASELINE_RUNBOOK.md").read_text(encoding="utf-8")
+
+        self.assertIn("/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN", env_script)
+        self.assertIn("PROTEINMPNN_DATA_ROOT", env_script)
+        self.assertIn("PROTEINMPNN_OUTPUT_ROOT", env_script)
+        self.assertIn("/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN", runbook)
+
 
 class TrainingContractTest(unittest.TestCase):
     def test_training_writes_manifest_metrics_and_best_checkpoint(self):

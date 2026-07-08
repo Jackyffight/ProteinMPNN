@@ -4,6 +4,14 @@ These scripts wrap `ProteinMPNN/run_train.sh` with stable local paths and preset
 They are intentionally thin; the main launcher owns validation, manifests, and
 runtime checks.
 
+Pinned NAS workspace:
+
+```text
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
+```
+
+Shared path variables live in `scripts/env_nas.sh`.
+
 Recommended order:
 
 ```bash
@@ -24,7 +32,7 @@ Latest PDB owned dataset track:
 ```bash
 scripts/init_dataset_version.sh
 scripts/sync_latest_pdb_assemblies.sh --dry-run
-scripts/inspect_dataset_version.sh ../datasets/proteinmpnn_custom/proteinmpnn_pdb_latest_YYYYMMDD
+scripts/inspect_dataset_version.sh /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn_custom/proteinmpnn_pdb_latest_YYYYMMDD
 ```
 
 For A100:

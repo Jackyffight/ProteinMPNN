@@ -16,7 +16,7 @@ The goal is full local retraining and iteration, not remote model invocation.
 - Launcher: `run_train.sh`
 - Operational wrappers: `scripts/`
 - mRNA bridge contract: `design_manifest.schema.json`
-- Training data location: `../datasets/proteinmpnn/pdb_2021aug02`
+- Training data location: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02`
 
 The local `repo/` tree contains the upstream ProteinMPNN training/inference files
 needed for from-scratch training. Large datasets and checkpoint weights are kept
@@ -27,13 +27,13 @@ out of git.
 Full training data is already present locally:
 
 ```text
-/data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02
 ```
 
 Archive:
 
 ```text
-/data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02.tar.gz
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02.tar.gz
 ```
 
 Known archive SHA256:
@@ -47,14 +47,14 @@ See `DATASET.md` for provenance and expected layout.
 To download or rebuild the upstream reference archive from HTTP range parts:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/download_dataset_parts.sh --extract
 ```
 
 For our own latest-PDB dataset track:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/init_dataset_version.sh
 scripts/sync_latest_pdb_assemblies.sh --dry-run
 ```
@@ -77,7 +77,7 @@ Use the CUDA PyTorch build appropriate for the target machine.
 Full baseline from data download through training:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/run_baseline_from_scratch.sh --profile v100 --devices 0
 ```
 
@@ -86,35 +86,35 @@ See `BASELINE_RUNBOOK.md` for the manual sequence.
 Smoke:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/scripts/smoke_train.sh
 ```
 
 Full-data sanity:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/scripts/full_sanity.sh
 ```
 
 V100 preset:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/scripts/full_train_v100.sh
 ```
 
 A100 preset:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/scripts/full_train_a100.sh
 ```
 
 Throughput benchmark before a long run:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/benchmark_throughput.sh quick
 scripts/print_throughput_benchmark.sh runs/benchmarks/<benchmark-dir>
 ```
@@ -122,14 +122,14 @@ scripts/print_throughput_benchmark.sh runs/benchmarks/<benchmark-dir>
 Direct launcher example:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/run_train.sh v100 --devices 0 --run-name proteinmpnn-v48-noise020-v100
 ```
 
 Resume:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/resume_train.sh runs/proteinmpnn-v48-noise020-v100/model_weights/epoch_last.pt
 ```
 
@@ -170,7 +170,7 @@ writes a sortable `summary.tsv`.
 Lightweight checks that do not require torch:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 python -m unittest discover -s tests -v
 ```
 

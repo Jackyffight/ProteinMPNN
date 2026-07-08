@@ -2,12 +2,12 @@
 
 ## Local Layout
 
-- ProteinMPNN code: `/data00/home/wangzhi.wit/models/ProteinMPNN/repo`
-- Training launcher: `/data00/home/wangzhi.wit/models/ProteinMPNN/run_train.sh`
-- Design manifest schema: `/data00/home/wangzhi.wit/models/ProteinMPNN/design_manifest.schema.json`
-- Full training data: `/data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02`
-- Smoke-test data: `/data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02_sample`
-- Full tarball: `/data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02.tar.gz`
+- ProteinMPNN code: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/repo`
+- Training launcher: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/run_train.sh`
+- Design manifest schema: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/design_manifest.schema.json`
+- Full training data: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02`
+- Smoke-test data: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02_sample`
+- Full tarball: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02.tar.gz`
 
 The GitHub git clone was unreliable in this environment, so the local repo is a
 raw-file training subset, not a complete `.git` checkout. It contains the
@@ -34,7 +34,7 @@ stack, but it should use the CUDA PyTorch build installed for the target host.
 ```bash
 conda create -n proteinmpnn python=3.10 -y
 conda activate proteinmpnn
-pip install -r /data00/home/wangzhi.wit/models/ProteinMPNN/requirements.txt
+pip install -r /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/requirements.txt
 python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
@@ -46,35 +46,35 @@ wheel from the official PyTorch instructions for that host.
 Smoke test on the small sample:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/scripts/smoke_train.sh
 ```
 
 Short full-data sanity run:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/scripts/full_sanity.sh
 ```
 
 V100 full training preset:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/scripts/full_train_v100.sh
 ```
 
 A100 full training preset:
 
 ```bash
-cd /data00/home/wangzhi.wit/models
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN
 ProteinMPNN/scripts/full_train_a100.sh
 ```
 
 Resume:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/resume_train.sh runs/proteinmpnn-v48-noise020-v100/model_weights/epoch_last.pt
 ```
 
@@ -120,7 +120,7 @@ The shared contract should be one JSONL row per designed protein sequence:
   "anchor_residues": [{"chain": "A", "residue": 42}, {"chain": "A", "residue": 117}],
   "fixed_positions": [{"chain": "A", "residue": 23}, {"chain": "A", "residue": 24}],
   "designed_chains": ["A"],
-  "mpnn_checkpoint": "/data00/home/wangzhi.wit/models/ProteinMPNN/runs/v48_noise020/model_weights/epoch_last.pt",
+  "mpnn_checkpoint": "/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/runs/v48_noise020/model_weights/epoch_last.pt",
   "mpnn_params": {
     "num_neighbors": 48,
     "backbone_noise": 0.2,

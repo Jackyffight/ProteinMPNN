@@ -3,7 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DATA_DIR="${DATA_DIR:-$REPO_ROOT/../datasets/proteinmpnn/pdb_2021aug02}"
+source "$SCRIPT_DIR/env_nas.sh"
+DATA_DIR="${DATA_DIR:-$PROTEINMPNN_DATA_ROOT/pdb_2021aug02}"
 
 if [ ! -d "$DATA_DIR" ]; then
   echo "Missing dataset directory: $DATA_DIR" >&2

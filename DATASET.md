@@ -12,7 +12,7 @@ by the upstream training scripts. It is not the current complete PDB archive.
 ## Local Layout
 
 ```text
-/data00/home/wangzhi.wit/models/datasets/proteinmpnn/
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/
   pdb_2021aug02.tar.gz
   pdb_2021aug02/
     README
@@ -49,33 +49,33 @@ depend on Hugging Face or on remote model APIs.
 Download or rebuild the full archive from HTTP byte-range parts:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/download_dataset_parts.sh --extract
 ```
 
 By default this writes parts under:
 
 ```text
-/data00/home/wangzhi.wit/models/datasets/proteinmpnn/parts/
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/parts/
 ```
 
 and merges them into:
 
 ```text
-/data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02.tar.gz
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02.tar.gz
 ```
 
 Fast layout check:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/validate_dataset.sh
 ```
 
 Full archive checksum, expensive because the file is 17G:
 
 ```bash
-sha256sum /data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02.tar.gz
+sha256sum /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02.tar.gz
 ```
 
 ## Latest PDB Track
@@ -83,7 +83,7 @@ sha256sum /data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02.tar
 Create and sync an owned latest-PDB dataset version:
 
 ```bash
-cd /data00/home/wangzhi.wit/models/ProteinMPNN
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/init_dataset_version.sh
 scripts/sync_latest_pdb_assemblies.sh --dry-run
 ```

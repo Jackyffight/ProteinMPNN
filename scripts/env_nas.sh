@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Shared NAS paths for the MPNN workspace.
+
+MPNN_WORKSPACE="${MPNN_WORKSPACE:-/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN}"
+PROTEINMPNN_REPO="${PROTEINMPNN_REPO:-$MPNN_WORKSPACE/ProteinMPNN}"
+PROTEINMPNN_DATA_ROOT="${PROTEINMPNN_DATA_ROOT:-$MPNN_WORKSPACE/datasets/proteinmpnn}"
+PROTEINMPNN_CUSTOM_DATA_ROOT="${PROTEINMPNN_CUSTOM_DATA_ROOT:-$MPNN_WORKSPACE/datasets/proteinmpnn_custom}"
+PROTEINMPNN_OUTPUT_ROOT="${PROTEINMPNN_OUTPUT_ROOT:-$PROTEINMPNN_REPO/runs}"

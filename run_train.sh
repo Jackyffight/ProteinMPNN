@@ -2,10 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$ROOT/scripts/env_nas.sh" ]; then
+  source "$ROOT/scripts/env_nas.sh"
+fi
 MODE="${PROTEINMPNN_MODE:-full}"
 ENV_NAME="${PROTEINMPNN_ENV:-devbox}"
 PYTHON_BIN="${PROTEINMPNN_PYTHON:-${PYTHON_BIN:-python}}"
-DATA_ROOT="${PROTEINMPNN_DATA_ROOT:-$ROOT/../datasets/proteinmpnn}"
+DATA_ROOT="$PROTEINMPNN_DATA_ROOT"
 DATA_DIR="${DATA_DIR:-}"
 OUTPUT_ROOT="${PROTEINMPNN_OUTPUT_ROOT:-$ROOT/runs}"
 OUTPUT_DIR="${OUTPUT_DIR:-}"

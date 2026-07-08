@@ -21,12 +21,13 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/env_nas.sh"
 TIMESTAMP="$(date +%Y%m%d%H%M%S)"
 
-DATA_ROOT="${PROTEINMPNN_DATA_ROOT:-$REPO_ROOT/../datasets/proteinmpnn}"
+DATA_ROOT="$PROTEINMPNN_DATA_ROOT"
 SAMPLE_DATA_DIR="$DATA_ROOT/pdb_2021aug02_sample"
 FULL_DATA_DIR="$DATA_ROOT/pdb_2021aug02"
-BENCH_ROOT="${PROTEINMPNN_BENCH_ROOT:-$REPO_ROOT/runs/benchmarks/throughput-${MODE}-${TIMESTAMP}}"
+BENCH_ROOT="${PROTEINMPNN_BENCH_ROOT:-$PROTEINMPNN_OUTPUT_ROOT/benchmarks/throughput-${MODE}-${TIMESTAMP}}"
 SUMMARY_FILE="${BENCH_ROOT}/summary.tsv"
 DEVICES="${DEVICES:-0}"
 

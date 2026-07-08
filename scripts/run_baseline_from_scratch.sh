@@ -8,6 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/env_nas.sh"
 PROFILE="v100"
 RUN_FULL=true
 RUN_BENCHMARK=true
@@ -72,6 +73,9 @@ cd "$REPO_ROOT"
 
 echo "=== ProteinMPNN baseline from scratch ==="
 echo "repo_root: $REPO_ROOT"
+echo "mpnn_workspace: $MPNN_WORKSPACE"
+echo "data_root: $PROTEINMPNN_DATA_ROOT"
+echo "output_root: $PROTEINMPNN_OUTPUT_ROOT"
 echo "profile: $PROFILE"
 echo "devices: $DEVICES"
 echo "run_name: $RUN_NAME"

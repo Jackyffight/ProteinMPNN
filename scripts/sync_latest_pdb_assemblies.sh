@@ -3,7 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DATA_ROOT="${DATA_ROOT:-$REPO_ROOT/../datasets/proteinmpnn_custom}"
+source "$SCRIPT_DIR/env_nas.sh"
+DATA_ROOT="${DATA_ROOT:-$PROTEINMPNN_CUSTOM_DATA_ROOT}"
 VERSION_ID="${VERSION_ID:-proteinmpnn_pdb_latest_$(date +%Y%m%d)}"
 VERSION_DIR="$DATA_ROOT/$VERSION_ID"
 DEST="$VERSION_DIR/raw/assemblies_mmcif"
@@ -20,11 +21,11 @@ Usage:
 
 Sync current wwPDB biological assembly mmCIF files for an owned ProteinMPNN
 dataset version. The default destination is:
-  ../datasets/proteinmpnn_custom/proteinmpnn_pdb_latest_<YYYYMMDD>/raw/assemblies_mmcif
+  /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn_custom/proteinmpnn_pdb_latest_<YYYYMMDD>/raw/assemblies_mmcif
 
 Options:
   --version-id <id>       Dataset version id.
-  --data-root <dir>       Custom dataset root.
+  --data-root <dir>       Custom dataset root. Default: NAS MPNN datasets/proteinmpnn_custom.
   --method <auto|rsync|wget>
   --rsync-source <url>    Default: rsync://rsync.rcsb.org/ftp_data/assemblies/mmCIF/divided/
   --dry-run               Print commands without downloading.

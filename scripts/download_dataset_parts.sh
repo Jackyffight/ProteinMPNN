@@ -3,9 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/env_nas.sh"
 
 URL="https://files.ipd.uw.edu/pub/training_sets/pdb_2021aug02.tar.gz"
-DATA_ROOT="$REPO_ROOT/../datasets/proteinmpnn"
+DATA_ROOT="$PROTEINMPNN_DATA_ROOT"
 ARCHIVE_NAME="pdb_2021aug02.tar.gz"
 EXPECTED_SIZE="18037128263"
 EXPECTED_SHA256="84d51d0b9224011db8deeab8b83e96f092830aaf6a1f538b1d94b0144f295714"
@@ -23,7 +24,7 @@ Downloads the upstream reference ProteinMPNN PDB training archive using HTTP ran
 requests, verifies the merged SHA256, and optionally extracts it.
 
 Options:
-  --data-root <dir>       Dataset root. Default: ../datasets/proteinmpnn.
+  --data-root <dir>       Dataset root. Default: NAS MPNN datasets/proteinmpnn.
   --url <url>             Archive URL. Default: upstream pdb_2021aug02 tarball.
   --archive-name <name>   Final archive name. Default: pdb_2021aug02.tar.gz.
   --expected-size <bytes> Expected archive size. Required for range math.
