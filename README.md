@@ -74,6 +74,15 @@ Use the CUDA PyTorch build appropriate for the target machine.
 
 ## Run
 
+Full baseline from data download through training:
+
+```bash
+cd /data00/home/wangzhi.wit/models/ProteinMPNN
+scripts/run_baseline_from_scratch.sh --profile v100 --devices 0
+```
+
+See `BASELINE_RUNBOOK.md` for the manual sequence.
+
 Smoke:
 
 ```bash

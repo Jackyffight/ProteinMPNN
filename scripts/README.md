@@ -7,6 +7,7 @@ runtime checks.
 Recommended order:
 
 ```bash
+scripts/run_baseline_from_scratch.sh --profile v100 --devices 0 --no-full
 scripts/download_dataset_parts.sh --extract
 scripts/validate_dataset.sh
 scripts/smoke_train.sh

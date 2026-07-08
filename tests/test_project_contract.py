@@ -51,6 +51,18 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("metrics.jsonl", script)
         self.assertIn("examples_per_second", printer)
 
+    def test_baseline_from_scratch_runs_all_required_phases(self):
+        script = (ROOT / "scripts/run_baseline_from_scratch.sh").read_text(encoding="utf-8")
+        runbook = (ROOT / "BASELINE_RUNBOOK.md").read_text(encoding="utf-8")
+
+        self.assertIn("download_dataset_parts.sh --extract", script)
+        self.assertIn("validate_dataset.sh", script)
+        self.assertIn("smoke_train.sh", script)
+        self.assertIn("full_sanity.sh", script)
+        self.assertIn("benchmark_throughput.sh", script)
+        self.assertIn("full_train_${PROFILE}.sh", script)
+        self.assertIn("Baseline From-Scratch Runbook", runbook)
+
 
 class TrainingContractTest(unittest.TestCase):
     def test_training_writes_manifest_metrics_and_best_checkpoint(self):
