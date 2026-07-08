@@ -102,6 +102,14 @@ cd /data00/home/wangzhi.wit/models
 ProteinMPNN/scripts/full_train_a100.sh
 ```
 
+Throughput benchmark before a long run:
+
+```bash
+cd /data00/home/wangzhi.wit/models/ProteinMPNN
+scripts/benchmark_throughput.sh quick
+scripts/print_throughput_benchmark.sh runs/benchmarks/<benchmark-dir>
+```
+
 Direct launcher example:
 
 ```bash
@@ -143,6 +151,10 @@ A100/full: batch_tokens=10000
 ```
 
 If V100 memory is tight, lower `--batch-tokens` to `4000`.
+
+Use `scripts/benchmark_throughput.sh quick` on each new host before committing to
+a long run. The benchmark sweeps token budget plus loader/prefetch workers and
+writes a sortable `summary.tsv`.
 
 ## Validation
 

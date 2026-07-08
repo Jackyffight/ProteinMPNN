@@ -40,6 +40,17 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("proteinmpnn_pdb_latest_<YYYYMMDD>", versions_doc)
         self.assertIn("Upstream Reference Baseline", versions_doc)
 
+    def test_throughput_benchmark_sweeps_mpnn_parameters(self):
+        script = (ROOT / "scripts/benchmark_throughput.sh").read_text(encoding="utf-8")
+        printer = (ROOT / "scripts/print_throughput_benchmark.sh").read_text(encoding="utf-8")
+
+        self.assertIn("batch_tokens", script)
+        self.assertIn("loader_workers", script)
+        self.assertIn("prefetch_workers", script)
+        self.assertIn("examples_per_second", script)
+        self.assertIn("metrics.jsonl", script)
+        self.assertIn("examples_per_second", printer)
+
 
 class TrainingContractTest(unittest.TestCase):
     def test_training_writes_manifest_metrics_and_best_checkpoint(self):

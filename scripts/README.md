@@ -12,6 +12,9 @@ scripts/validate_dataset.sh
 scripts/smoke_train.sh
 scripts/full_sanity.sh
 scripts/full_train_v100.sh
+scripts/benchmark_throughput.sh smoke
+scripts/benchmark_throughput.sh quick
+scripts/print_throughput_benchmark.sh runs/benchmarks/<benchmark-dir>
 scripts/print_latest_metrics.sh runs/<run-name>
 ```
 
@@ -28,6 +31,11 @@ For A100:
 ```bash
 scripts/full_train_a100.sh
 ```
+
+Current unmeasured presets mirror the mRNABERT launcher style: use `v100`
+for conservative token budgets and `a100` for larger token budgets. Run the
+throughput benchmark before long training on a new host, then keep the measured
+winner in the run name and manifest.
 
 Resume:
 
