@@ -13,10 +13,10 @@ METHOD="auto"
 EXTRACT=false
 FORCE=false
 
-ARIA2_CONNECTIONS="${ARIA2_CONNECTIONS:-16}"
-ARIA2_SPLITS="${ARIA2_SPLITS:-32}"
-PART_COUNT="${PART_COUNT:-32}"
-PARALLEL="${PARALLEL:-8}"
+ARIA2_CONNECTIONS="${ARIA2_CONNECTIONS:-8}"
+ARIA2_SPLITS="${ARIA2_SPLITS:-50}"
+PART_COUNT="${PART_COUNT:-50}"
+PARALLEL="${PARALLEL:-6}"
 CURL_RETRIES="${CURL_RETRIES:-50}"
 CURL_RETRY_DELAY="${CURL_RETRY_DELAY:-5}"
 
@@ -32,10 +32,10 @@ repo's curl range-part downloader. Safe to rerun after interruption.
 Options:
   --data-root <dir>            Dataset root. Default: NAS MPNN datasets/proteinmpnn.
   --method <auto|aria2|curl>   Download backend. Default: auto.
-  --aria2-connections <n>      aria2 max connections per server. Default: 16.
-  --aria2-splits <n>           aria2 split count. Default: 32.
-  --part-count <n>             curl fallback byte ranges. Default: 32.
-  --parallel <n>               curl fallback concurrent ranges. Default: 8.
+  --aria2-connections <n>      aria2 max connections per server. Default: 8.
+  --aria2-splits <n>           aria2 split count. Default: 50.
+  --part-count <n>             curl fallback byte ranges. Default: 50.
+  --parallel <n>               curl fallback concurrent ranges. Default: 6.
   --extract                    Extract archive after checksum verification.
   --force                      Redownload from scratch.
   -h, --help                   Show this help.

@@ -57,13 +57,13 @@ scripts/download_dataset_fast.sh --extract
 Force the curl byte-range backend and tune concurrency if the server is flaky:
 
 ```bash
-scripts/download_dataset_fast.sh --method curl --part-count 32 --parallel 8 --extract
+scripts/download_dataset_fast.sh --method curl --part-count 50 --parallel 6 --extract
 ```
 
 The curl backend writes parts under:
 
 ```text
-/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/parts/
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/parts_50/
 ```
 
 and merges them into:

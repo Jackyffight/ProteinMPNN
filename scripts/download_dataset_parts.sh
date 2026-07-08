@@ -10,8 +10,8 @@ DATA_ROOT="${DATA_ROOT:-$PROTEINMPNN_DATA_ROOT}"
 ARCHIVE_NAME="pdb_2021aug02.tar.gz"
 EXPECTED_SIZE="18037128263"
 EXPECTED_SHA256="84d51d0b9224011db8deeab8b83e96f092830aaf6a1f538b1d94b0144f295714"
-PART_COUNT="${PART_COUNT:-32}"
-PARALLEL="${PARALLEL:-8}"
+PART_COUNT="${PART_COUNT:-50}"
+PARALLEL="${PARALLEL:-6}"
 CURL_RETRIES="${CURL_RETRIES:-50}"
 CURL_RETRY_DELAY="${CURL_RETRY_DELAY:-5}"
 EXTRACT=false
@@ -31,8 +31,8 @@ Options:
   --archive-name <name>   Final archive name. Default: pdb_2021aug02.tar.gz.
   --expected-size <bytes> Expected archive size. Required for range math.
   --sha256 <hex>          Expected final archive SHA256.
-  --part-count <n>        Number of byte ranges. Default: 32.
-  --parallel <n>          Concurrent range downloads. Default: 8.
+  --part-count <n>        Number of byte ranges. Default: 50.
+  --parallel <n>          Concurrent range downloads. Default: 6.
   --curl-retries <n>      Retries per range chunk. Default: 50.
   --retry-delay <sec>     Delay between retries. Default: 5.
   --extract               Extract archive under --data-root after verification.
@@ -92,7 +92,7 @@ if ! [[ "$CURL_RETRY_DELAY" =~ ^[0-9]+$ ]]; then
 fi
 
 ARCHIVE="$DATA_ROOT/$ARCHIVE_NAME"
-PART_DIR="$DATA_ROOT/parts"
+PART_DIR="$DATA_ROOT/parts_${PART_COUNT}"
 LOG_DIR="$DATA_ROOT/download_logs"
 LOCK_DIR="$DATA_ROOT/.download-${ARCHIVE_NAME}.lock"
 PART_SIZE=$(( (EXPECTED_SIZE + PART_COUNT - 1) / PART_COUNT ))
