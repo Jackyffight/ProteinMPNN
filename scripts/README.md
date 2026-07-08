@@ -7,6 +7,8 @@ runtime checks.
 Recommended order:
 
 ```bash
+scripts/download_dataset_parts.sh --extract
+scripts/validate_dataset.sh
 scripts/smoke_train.sh
 scripts/full_sanity.sh
 scripts/full_train_v100.sh

@@ -46,6 +46,25 @@ depend on Hugging Face or on remote model APIs.
 
 ## Validation Commands
 
+Download or rebuild the full archive from HTTP byte-range parts:
+
+```bash
+cd /data00/home/wangzhi.wit/models/ProteinMPNN
+scripts/download_dataset_parts.sh --extract
+```
+
+By default this writes parts under:
+
+```text
+/data00/home/wangzhi.wit/models/datasets/proteinmpnn/parts/
+```
+
+and merges them into:
+
+```text
+/data00/home/wangzhi.wit/models/datasets/proteinmpnn/pdb_2021aug02.tar.gz
+```
+
 Fast layout check:
 
 ```bash

@@ -44,6 +44,13 @@ Known archive SHA256:
 
 See `DATASET.md` for provenance and expected layout.
 
+To download or rebuild the archive from HTTP range parts:
+
+```bash
+cd /data00/home/wangzhi.wit/models/ProteinMPNN
+scripts/download_dataset_parts.sh --extract
+```
+
 ## Environment
 
 Use a separate environment from mRNABERT:

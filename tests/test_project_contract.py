@@ -21,6 +21,15 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("BATCH_TOKENS=\"${BATCH_TOKENS:-6000}\"", launcher)
         self.assertIn("BATCH_TOKENS=\"${BATCH_TOKENS:-10000}\"", launcher)
 
+    def test_dataset_download_script_uses_range_parts_and_checksum(self):
+        script = (ROOT / "scripts/download_dataset_parts.sh").read_text(encoding="utf-8")
+
+        self.assertIn("--range", script)
+        self.assertIn("EXPECTED_SHA256", script)
+        self.assertIn("EXPECTED_SIZE", script)
+        self.assertIn("pdb_2021aug02.tar.gz", script)
+        self.assertIn("18037128263", script)
+
 
 class TrainingContractTest(unittest.TestCase):
     def test_training_writes_manifest_metrics_and_best_checkpoint(self):
