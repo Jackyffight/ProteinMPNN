@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retries", type=int, default=20)
     parser.add_argument("--retry-delay", type=float, default=5.0)
     parser.add_argument("--assembly-id", default="all", help="all or an assembly id such as 1.")
+    parser.add_argument("--pdb-list", default="", help="Optional file with one PDB id per line.")
     parser.add_argument("--limit", type=int, default=0, help="Debug: download first n files only.")
     parser.add_argument("--manifest", default="", help="Path to write/read download manifest JSONL.")
     parser.add_argument("--list-only", action="store_true", help="Build manifest without downloading files.")
@@ -141,6 +142,31 @@ def build_manifest(base_url: str, assembly_id: str, workers: int, limit: int) ->
     return records
 
 
+def build_manifest_from_pdb_list(base_url: str, pdb_list: str, assembly_id: str, limit: int) -> list[dict]:
+    records: list[dict] = []
+    with open(pdb_list, "r", encoding="utf-8") as handle:
+        pdb_ids = [line.strip().lower() for line in handle if line.strip() and not line.startswith("#")]
+    if limit > 0:
+        pdb_ids = pdb_ids[:limit]
+    assembly_ids = ["1"] if assembly_id == "all" else [assembly_id]
+    for pdb_id in pdb_ids:
+        if len(pdb_id) != 4:
+            continue
+        subdir = pdb_id[1:3]
+        for current_assembly_id in assembly_ids:
+            filename = f"{pdb_id}-assembly{current_assembly_id}.cif.gz"
+            relpath = f"{subdir}/{filename}"
+            records.append(
+                {
+                    "url": urljoin(base_url, relpath),
+                    "relpath": relpath,
+                    "modified": "",
+                    "size": 0,
+                }
+            )
+    return records
+
+
 def load_manifest(path: Path) -> list[dict]:
     records = []
     with path.open("r", encoding="utf-8") as handle:
@@ -169,6 +195,8 @@ def download_one(record: dict, dest: Path, retries: int, retry_delay: float) -> 
     target.parent.mkdir(parents=True, exist_ok=True)
     expected_size = int(record["size"])
     current = local_size(target)
+    if expected_size == 0 and current > 0:
+        return "skipped", current
     if expected_size > 0 and current == expected_size:
         return "skipped", expected_size
     if expected_size > 0 and current > expected_size:
@@ -221,6 +249,9 @@ def main() -> int:
 
     if manifest_path.exists() and not args.force_list:
         records = load_manifest(manifest_path)
+    elif args.pdb_list:
+        records = build_manifest_from_pdb_list(args.base_url, args.pdb_list, args.assembly_id, args.limit)
+        write_manifest(manifest_path, records)
     else:
         records = build_manifest(args.base_url, args.assembly_id, args.workers, args.limit)
         write_manifest(manifest_path, records)
