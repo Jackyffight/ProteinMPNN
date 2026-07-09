@@ -44,6 +44,7 @@ class LauncherContractTest(unittest.TestCase):
         sync_script = (ROOT / "scripts/sync_latest_pdb_assemblies.sh").read_text(encoding="utf-8")
         build_script = (ROOT / "scripts/build_pdb_2026_dataset.sh").read_text(encoding="utf-8")
         cluster_script = (ROOT / "scripts/download_rcsb_sequence_clusters.sh").read_text(encoding="utf-8")
+        metadata_script = (ROOT / "scripts/download_wwpdb_entries_index.sh").read_text(encoding="utf-8")
         builder = (ROOT / "repo/training/build_pdb_mmcif_dataset.py").read_text(encoding="utf-8")
         versions_doc = (ROOT / "DATASET_VERSIONS.md").read_text(encoding="utf-8")
 
@@ -52,6 +53,8 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("--dry-run", sync_script)
         self.assertIn("proteinmpnn_pdb_20260708", build_script)
         self.assertIn("clusters-by-entity-${SEQ_ID}.txt", cluster_script)
+        self.assertIn("entries.idx", metadata_script)
+        self.assertIn("load_entry_metadata", builder)
         self.assertIn("MMCIF2Dict", builder)
         self.assertIn("list.csv", builder)
         self.assertIn("valid_clusters.txt", builder)

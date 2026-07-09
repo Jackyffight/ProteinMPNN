@@ -11,6 +11,7 @@ VERSION_DIR="$DATA_ROOT/$VERSION_ID"
 mkdir -p \
   "$VERSION_DIR/raw/assemblies_mmcif" \
   "$VERSION_DIR/raw/sequence_clusters" \
+  "$VERSION_DIR/raw/metadata" \
   "$VERSION_DIR/processed" \
   "$VERSION_DIR/splits" \
   "$VERSION_DIR/logs"
@@ -29,6 +30,7 @@ https://files.wwpdb.org/pub/pdb/data/assemblies/mmCIF/divided/
 \`\`\`text
 raw/assemblies_mmcif/
 raw/sequence_clusters/
+raw/metadata/
 processed/
 splits/
 logs/
@@ -39,6 +41,7 @@ dataset_manifest.json
 
 - [ ] raw wwPDB biological assembly mmCIF synced
 - [ ] RCSB 30% sequence clusters downloaded
+- [ ] wwPDB entries.idx metadata downloaded
 - [ ] mmCIF parsed into ProteinMPNN records
 - [ ] filters applied
 - [ ] sequence clusters created

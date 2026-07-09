@@ -15,6 +15,7 @@ MAX_DATE="${MAX_DATE:-2026-07-08}"
 LIMIT="${LIMIT:-}"
 SKIP_SYNC=false
 SKIP_CLUSTERS=false
+SKIP_METADATA=false
 
 usage() {
   cat <<'EOF'
@@ -35,6 +36,7 @@ Options:
   --limit <n>             Debug: process only first n assembly files.
   --skip-sync             Use existing raw/assemblies_mmcif.
   --skip-clusters         Use existing raw/sequence_clusters.
+  --skip-metadata         Use existing raw/metadata/entries.idx.
   -h, --help              Show this help.
 
 Examples:
@@ -61,6 +63,7 @@ while [ $# -gt 0 ]; do
     --limit) LIMIT="$2"; shift 2 ;;
     --skip-sync|--skip_sync) SKIP_SYNC=true; shift ;;
     --skip-clusters|--skip_clusters) SKIP_CLUSTERS=true; shift ;;
+    --skip-metadata|--skip_metadata) SKIP_METADATA=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -69,6 +72,7 @@ done
 VERSION_DIR="$DATA_ROOT/$VERSION_ID"
 RAW_DIR="$VERSION_DIR/raw/assemblies_mmcif"
 CLUSTER_FILE="$VERSION_DIR/raw/sequence_clusters/clusters-by-entity-30.txt"
+ENTRIES_INDEX="$VERSION_DIR/raw/metadata/entries.idx"
 PROCESSED_DIR="$VERSION_DIR/processed/proteinmpnn"
 
 DATA_ROOT="$DATA_ROOT" "$SCRIPT_DIR/init_dataset_version.sh" "$VERSION_ID" >/dev/null
@@ -81,11 +85,16 @@ if [ "$SKIP_CLUSTERS" = false ]; then
   DATA_ROOT="$DATA_ROOT" VERSION_ID="$VERSION_ID" "$SCRIPT_DIR/download_rcsb_sequence_clusters.sh"
 fi
 
+if [ "$SKIP_METADATA" = false ]; then
+  DATA_ROOT="$DATA_ROOT" VERSION_ID="$VERSION_ID" "$SCRIPT_DIR/download_wwpdb_entries_index.sh"
+fi
+
 args=(
   --raw-dir "$RAW_DIR"
   --out-dir "$PROCESSED_DIR"
   --version-id "$VERSION_ID"
   --cluster-file "$CLUSTER_FILE"
+  --entries-index "$ENTRIES_INDEX"
   --workers "$WORKERS"
   --assembly-id "$ASSEMBLY_ID"
   --max-resolution "$MAX_RESOLUTION"

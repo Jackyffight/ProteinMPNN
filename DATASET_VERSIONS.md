@@ -71,6 +71,7 @@ Local raw layout:
     raw/
       assemblies_mmcif/
       sequence_clusters/
+      metadata/
     processed/
       proteinmpnn/
     splits/
@@ -80,18 +81,41 @@ Initial build stages:
 
 1. sync current wwPDB biological assembly mmCIF files
 2. download RCSB 30% weekly sequence clusters for split grouping
-3. parse assembly mmCIF into ProteinMPNN-compatible structure records
-4. filter proteins by experimental method, resolution, polymer type, missing atoms,
+3. download wwPDB `entries.idx` metadata for deposition date, resolution, and method
+4. parse assembly mmCIF into ProteinMPNN-compatible structure records
+5. filter proteins by experimental method, resolution, polymer type, missing atoms,
    chain length, and residue alphabet
-5. create train/valid/test split by cluster id
-6. write `list.csv`, `valid_clusters.txt`, `test_clusters.txt`, and `pdb/**/*.pt`
-7. run smoke training against the new processed dataset
+6. create train/valid/test split by cluster id
+7. write `list.csv`, `valid_clusters.txt`, `test_clusters.txt`, and `pdb/**/*.pt`
+8. run smoke training against the new processed dataset
 
 Build the current 2026 snapshot:
 
 ```bash
 cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/build_pdb_2026_dataset.sh
+```
+
+Build the raw 2026 snapshot on dev2 for later transfer:
+
+```bash
+cd /data00/home/wangzhi.wit/models/ProteinMPNN
+LOCAL_DATA=/data00/home/wangzhi.wit/models/datasets/proteinmpnn_custom
+VERSION=proteinmpnn_pdb_20260708
+
+python scripts/download_wwpdb_assemblies_https.py \
+  --dest "$LOCAL_DATA/$VERSION/raw/assemblies_mmcif" \
+  --workers 32
+
+DATA_ROOT="$LOCAL_DATA" VERSION_ID="$VERSION" \
+  scripts/download_rcsb_sequence_clusters.sh
+
+DATA_ROOT="$LOCAL_DATA" VERSION_ID="$VERSION" \
+  scripts/download_wwpdb_entries_index.sh
+
+PYTHONPATH=/data00/home/wangzhi.wit/models/.pdbbuild_deps \
+DATA_ROOT="$LOCAL_DATA" VERSION_ID="$VERSION" \
+  scripts/build_pdb_2026_dataset.sh --skip-sync --skip-clusters --skip-metadata --workers 32
 ```
 
 Build only structures deposited in 2026:

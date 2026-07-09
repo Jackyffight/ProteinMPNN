@@ -56,6 +56,7 @@ AA3_TO_1 = {
 ATOM_INDEX = {"N": 0, "CA": 1, "C": 2, "O": 3}
 CHAIN_IDS = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
 CLUSTER_MAP: dict[tuple[str, str], int] = {}
+ENTRY_METADATA: dict[str, dict] = {}
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--version-id", required=True)
     parser.add_argument("--cluster-file", default="")
+    parser.add_argument("--entries-index", default="")
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--assembly-id", default="all")
     parser.add_argument("--limit", type=int, default=0)
@@ -170,6 +172,43 @@ def load_cluster_map(path: str) -> dict[tuple[str, str], int]:
     return cluster_map
 
 
+def parse_idx_date(value: str) -> str:
+    match = re.match(r"(\d{2})/(\d{2})/(\d{2})$", value.strip())
+    if not match:
+        return ""
+    month, day, year = [int(part) for part in match.groups()]
+    full_year = 2000 + year if year <= 30 else 1900 + year
+    return f"{full_year:04d}-{month:02d}-{day:02d}"
+
+
+def load_entry_metadata(path: str) -> dict[str, dict]:
+    if not path or not os.path.isfile(path):
+        return {}
+    metadata: dict[str, dict] = {}
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.rstrip("\n")
+            if not line or line.startswith("IDCODE") or line.startswith("-"):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 8:
+                continue
+            pdb_id = parts[0].strip().upper()
+            date = parse_idx_date(parts[2])
+            try:
+                resolution = float(parts[6])
+            except ValueError:
+                resolution = float("nan")
+            method = parts[7].strip()
+            metadata[pdb_id] = {
+                "date": date,
+                "resolution": resolution,
+                "method": method,
+                "header": parts[1].strip(),
+            }
+    return metadata
+
+
 def stable_hash_int(text: str, modulo: int) -> int:
     return int(hashlib.sha1(text.encode("utf-8")).hexdigest()[:12], 16) % modulo
 
@@ -213,17 +252,18 @@ def parse_one(path_str: str, config: dict) -> dict:
         return {"status": "skipped", "reason": "bad_file_name", "path": path_str}
     pdb_id, assembly_id = ids
     entry_id = f"{pdb_id}a{assembly_id}"
+    entry_metadata = ENTRY_METADATA.get(pdb_id.upper(), {})
 
     try:
         cif = read_mmcif(path)
     except Exception as exc:
         return {"status": "failed", "reason": "mmcif_parse_error", "path": path_str, "error": str(exc)}
 
-    method = first_value(cif, ["_exptl.method"], default="")
+    method = entry_metadata.get("method") or first_value(cif, ["_exptl.method"], default="")
     if not method_allowed(method, config["method_allow"]):
         return {"status": "skipped", "reason": "method", "path": path_str}
 
-    deposition_date = first_value(
+    deposition_date = entry_metadata.get("date") or first_value(
         cif,
         [
             "_pdbx_database_status.recvd_initial_deposition_date",
@@ -234,14 +274,16 @@ def parse_one(path_str: str, config: dict) -> dict:
     if not date_in_range(deposition_date, config["min_date"], config["max_date"]):
         return {"status": "skipped", "reason": "date", "path": path_str}
 
-    resolution = first_float(
+    resolution = entry_metadata.get("resolution", float("nan"))
+    if not math.isfinite(resolution):
+        resolution = first_float(
         cif,
         [
             "_refine.ls_d_res_high",
             "_em_3d_reconstruction.resolution",
             "_reflns.d_resolution_high",
         ],
-    )
+        )
     if not math.isfinite(resolution) or resolution > config["max_resolution"]:
         return {"status": "skipped", "reason": "resolution", "path": path_str}
 
@@ -466,6 +508,8 @@ def main() -> int:
 
     global CLUSTER_MAP
     CLUSTER_MAP = load_cluster_map(args.cluster_file)
+    global ENTRY_METADATA
+    ENTRY_METADATA = load_entry_metadata(args.entries_index)
 
     files = discover_files(raw_dir, args.assembly_id, args.limit)
     if not files:
@@ -491,6 +535,7 @@ def main() -> int:
     print(f"out_dir: {out_dir}")
     print(f"files: {len(files)}")
     print(f"cluster_map_entries: {len(CLUSTER_MAP)}")
+    print(f"entry_metadata_records: {len(ENTRY_METADATA)}")
 
     if args.workers <= 1:
         iterator = (parse_one(str(path), config) for path in files)
@@ -537,7 +582,9 @@ def main() -> int:
         "out_dir": str(out_dir),
         "assembly_id": args.assembly_id,
         "cluster_file": args.cluster_file,
+        "entries_index": args.entries_index,
         "cluster_map_entries": len(CLUSTER_MAP),
+        "entry_metadata_records": len(ENTRY_METADATA),
         "filters": {
             "max_resolution": args.max_resolution,
             "min_date": args.min_date,
