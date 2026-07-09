@@ -28,6 +28,7 @@ def main(args):
     import subprocess
     from concurrent.futures import ProcessPoolExecutor    
     from utils import worker_init_fn, get_pdbs, loader_pdb, build_training_clusters, PDB_dataset, StructureDataset, StructureLoader
+    from tar_shard_utils import loader_tar_pdb
     from model_utils import featurize, loss_smoothed, loss_nll, get_std_opt, ProteinMPNN
 
     device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
@@ -64,6 +65,19 @@ def main(args):
             pass
 
     data_path = args.path_for_training_data
+    dataset_format = args.dataset_format
+    if dataset_format == "auto":
+        if os.path.isfile(f"{data_path}/manifest.json") and os.path.isdir(f"{data_path}/shards"):
+            dataset_format = "tar"
+        else:
+            dataset_format = "pt"
+    if dataset_format == "tar":
+        pdb_loader = loader_tar_pdb
+    elif dataset_format == "pt":
+        pdb_loader = loader_pdb
+    else:
+        raise ValueError(f"unsupported dataset_format: {dataset_format}")
+
     params = {
         "LIST"    : f"{data_path}/list.csv", 
         "VAL"     : f"{data_path}/valid_clusters.txt",
@@ -99,6 +113,7 @@ def main(args):
         "args": vars(args),
         "data": {
             "path_for_training_data": data_path,
+            "dataset_format": dataset_format,
             "list": params["LIST"],
             "valid_clusters": params["VAL"],
             "test_clusters": params["TEST"],
@@ -130,9 +145,9 @@ def main(args):
     with open(base_folder + 'run_manifest.json', 'w') as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
      
-    train_set = PDB_dataset(list(train.keys()), loader_pdb, train, params)
+    train_set = PDB_dataset(list(train.keys()), pdb_loader, train, params)
     train_loader = torch.utils.data.DataLoader(train_set, worker_init_fn=worker_init_fn, **LOAD_PARAM)
-    valid_set = PDB_dataset(list(valid.keys()), loader_pdb, valid, params)
+    valid_set = PDB_dataset(list(valid.keys()), pdb_loader, valid, params)
     valid_loader = torch.utils.data.DataLoader(valid_set, worker_init_fn=worker_init_fn, **LOAD_PARAM)
 
 
@@ -342,6 +357,7 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     argparser.add_argument("--path_for_training_data", type=str, default="my_path/pdb_2021aug02", help="path for loading training data") 
+    argparser.add_argument("--dataset_format", choices=["auto", "pt", "tar"], default="auto", help="training dataset storage format")
     argparser.add_argument("--path_for_outputs", type=str, default="./exp_020", help="path for logs and model weights")
     argparser.add_argument("--previous_checkpoint", type=str, default="", help="path for previous model weights, e.g. file.pt")
     argparser.add_argument("--num_epochs", type=int, default=200, help="number of epochs to train for")

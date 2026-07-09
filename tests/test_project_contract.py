@@ -14,6 +14,8 @@ class LauncherContractTest(unittest.TestCase):
 
         self.assertIn("--seed", launcher)
         self.assertIn("--num_loader_workers", launcher)
+        self.assertIn("--dataset-format", launcher)
+        self.assertIn("--dataset_format", launcher)
         self.assertIn("--prefetch_workers", launcher)
         self.assertIn("--save_best", launcher)
         self.assertIn("run_name", launcher.lower())
@@ -65,6 +67,7 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("index.jsonl", pack_script)
         self.assertIn("offset", pack_script)
         self.assertIn("loader_tar_pdb", shard_reader)
+        self.assertIn("dataset_format", (ROOT / "repo/training/training.py").read_text(encoding="utf-8"))
         self.assertIn("proteinmpnn_pdb_latest_<YYYYMMDD>", versions_doc)
         self.assertIn("Upstream Reference Baseline", versions_doc)
 
@@ -115,6 +118,8 @@ class TrainingContractTest(unittest.TestCase):
         training = (ROOT / "repo/training/training.py").read_text(encoding="utf-8")
 
         self.assertIn("--seed", training)
+        self.assertIn("--dataset_format", training)
+        self.assertIn("loader_tar_pdb", training)
         self.assertIn("--num_loader_workers", training)
         self.assertIn("--prefetch_workers", training)
         self.assertIn("--tf32", training)

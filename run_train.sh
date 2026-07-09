@@ -10,6 +10,7 @@ ENV_NAME="${PROTEINMPNN_ENV:-devbox}"
 PYTHON_BIN="${PROTEINMPNN_PYTHON:-${PYTHON_BIN:-python}}"
 DATA_ROOT="${PROTEINMPNN_DATA_ROOT:-}"
 DATA_DIR="${DATA_DIR:-}"
+DATASET_FORMAT="${DATASET_FORMAT:-auto}"
 OUTPUT_ROOT="${PROTEINMPNN_OUTPUT_ROOT:-$ROOT/runs}"
 OUTPUT_DIR="${OUTPUT_DIR:-}"
 RUN_NAME="${RUN_NAME:-}"
@@ -48,7 +49,8 @@ Usage:
 Launcher args:
   --env <devbox|online|local>        Environment label for run naming. Default: devbox.
   --mode <smoke|full|v100|a100>      Training preset. Positional mode is also accepted.
-  --data-dir <path>                  Dataset root containing list.csv and pdb/.
+  --data-dir <path>                  Dataset root containing list.csv plus pdb/ or tar shards.
+  --dataset-format <auto|pt|tar>     Dataset storage format. Default: auto.
   --output-root <dir>                Workspace root. Default: ProteinMPNN/runs.
   --output-dir <dir>                 Exact output directory. Overrides --output-root/--run-name.
   --run-name <name>                  Run name under --output-root.
@@ -87,6 +89,7 @@ while [ $# -gt 0 ]; do
     --env) ENV_NAME="$2"; shift 2 ;;
     --mode) MODE="$2"; shift 2 ;;
     --data-dir|--data_dir) DATA_DIR="$2"; shift 2 ;;
+    --dataset-format|--dataset_format) DATASET_FORMAT="$2"; shift 2 ;;
     --output-root|--output_root) OUTPUT_ROOT="$2"; shift 2 ;;
     --output-dir|--output_dir) OUTPUT_DIR="$2"; shift 2 ;;
     --run-name|--run_name) RUN_NAME="$2"; shift 2 ;;
@@ -125,6 +128,10 @@ done
 
 if [ "$MODE" != "smoke" ] && [ "$MODE" != "full" ] && [ "$MODE" != "v100" ] && [ "$MODE" != "a100" ]; then
   echo "Error: --mode must be smoke, full, v100, or a100." >&2
+  exit 1
+fi
+if [ "$DATASET_FORMAT" != "auto" ] && [ "$DATASET_FORMAT" != "pt" ] && [ "$DATASET_FORMAT" != "tar" ]; then
+  echo "Error: --dataset-format must be auto, pt, or tar." >&2
   exit 1
 fi
 
@@ -182,6 +189,31 @@ for required in list.csv valid_clusters.txt test_clusters.txt; do
     exit 1
   fi
 done
+if [ "$DATASET_FORMAT" = "auto" ]; then
+  if [ -f "$DATA_DIR/manifest.json" ] && [ -f "$DATA_DIR/index.jsonl" ] && [ -d "$DATA_DIR/shards" ]; then
+    DATASET_FORMAT="tar"
+  else
+    DATASET_FORMAT="pt"
+  fi
+fi
+if [ "$DATASET_FORMAT" = "pt" ]; then
+  if [ ! -d "$DATA_DIR/pdb" ]; then
+    echo "Error: pt dataset format requires directory: $DATA_DIR/pdb" >&2
+    exit 1
+  fi
+fi
+if [ "$DATASET_FORMAT" = "tar" ]; then
+  for required in manifest.json index.jsonl records.jsonl; do
+    if [ ! -f "$DATA_DIR/$required" ]; then
+      echo "Error: tar dataset format requires file: $DATA_DIR/$required" >&2
+      exit 1
+    fi
+  done
+  if [ ! -d "$DATA_DIR/shards" ]; then
+    echo "Error: tar dataset format requires directory: $DATA_DIR/shards" >&2
+    exit 1
+  fi
+fi
 if [ -n "$RESUME" ] && [ ! -f "$RESUME" ]; then
   echo "Error: resume checkpoint not found: $RESUME" >&2
   exit 1
@@ -217,6 +249,7 @@ echo "=== ProteinMPNN training ==="
 echo "env: $ENV_NAME"
 echo "mode: $MODE"
 echo "data_dir: $DATA_DIR"
+echo "dataset_format: $DATASET_FORMAT"
 echo "output_dir: $OUTPUT_DIR"
 echo "devices: ${CUDA_VISIBLE_DEVICES:-unset}"
 echo "resume: ${RESUME:-none}"
@@ -237,6 +270,7 @@ echo "mixed_precision: $MIXED_PRECISION"
 cd "$ROOT/repo/training"
 exec "$PYTHON_BIN" training.py \
   --path_for_training_data "$DATA_DIR" \
+  --dataset_format "$DATASET_FORMAT" \
   --path_for_outputs "$OUTPUT_DIR" \
   --previous_checkpoint "$RESUME" \
   --num_epochs "$NUM_EPOCHS" \

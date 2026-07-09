@@ -55,6 +55,16 @@ Known archive SHA256:
 
 See `DATASET.md` for provenance and expected layout.
 
+The launcher accepts both the upstream small-file `.pt` layout and the new
+tar-shard layout used for the 2026 dataset track. It auto-detects tar shards when
+`manifest.json`, `index.jsonl`, and `shards/` are present:
+
+```bash
+ProteinMPNN/run_train.sh smoke \
+  --data-dir /path/to/proteinmpnn_tar_shards \
+  --dataset-format tar
+```
+
 To download or rebuild the upstream reference archive from HTTP range parts:
 
 ```bash
