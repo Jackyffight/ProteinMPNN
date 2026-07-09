@@ -45,6 +45,8 @@ class LauncherContractTest(unittest.TestCase):
         build_script = (ROOT / "scripts/build_pdb_2026_dataset.sh").read_text(encoding="utf-8")
         cluster_script = (ROOT / "scripts/download_rcsb_sequence_clusters.sh").read_text(encoding="utf-8")
         metadata_script = (ROOT / "scripts/download_wwpdb_entries_index.sh").read_text(encoding="utf-8")
+        pack_script = (ROOT / "scripts/pack_proteinmpnn_tar_shards.py").read_text(encoding="utf-8")
+        shard_reader = (ROOT / "repo/training/tar_shard_utils.py").read_text(encoding="utf-8")
         builder = (ROOT / "repo/training/build_pdb_mmcif_dataset.py").read_text(encoding="utf-8")
         versions_doc = (ROOT / "DATASET_VERSIONS.md").read_text(encoding="utf-8")
 
@@ -59,6 +61,10 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("list.csv", builder)
         self.assertIn("valid_clusters.txt", builder)
         self.assertIn("asmb_xform0", builder)
+        self.assertIn("proteinmpnn.tar_shard.v1", pack_script)
+        self.assertIn("index.jsonl", pack_script)
+        self.assertIn("offset", pack_script)
+        self.assertIn("loader_tar_pdb", shard_reader)
         self.assertIn("proteinmpnn_pdb_latest_<YYYYMMDD>", versions_doc)
         self.assertIn("Upstream Reference Baseline", versions_doc)
 
