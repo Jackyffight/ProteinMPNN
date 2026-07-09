@@ -100,6 +100,8 @@ class LauncherContractTest(unittest.TestCase):
 
         self.assertIn("/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN", env_script)
         self.assertIn("PROTEINMPNN_DATA_ROOT", env_script)
+        self.assertIn("PROTEINMPNN_TAR_SHARD_DATA_DIR", env_script)
+        self.assertIn("proteinmpnn_tar_shards", env_script)
         self.assertIn("PROTEINMPNN_OUTPUT_ROOT", env_script)
         self.assertIn("/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN", runbook)
 

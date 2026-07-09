@@ -61,9 +61,12 @@ tar-shard layout used for the 2026 dataset track. It auto-detects tar shards whe
 
 ```bash
 ProteinMPNN/run_train.sh smoke \
-  --data-dir /path/to/proteinmpnn_tar_shards \
+  --data-dir /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/proteinmpnn_tar_shards \
   --dataset-format tar
 ```
+
+When `scripts/env_nas.sh` is sourced, the same path is available as
+`$PROTEINMPNN_TAR_SHARD_DATA_DIR`.
 
 To download or rebuild the upstream reference archive from HTTP range parts:
 
