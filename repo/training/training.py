@@ -11,6 +11,16 @@ def str2bool(value):
         return False
     raise argparse.ArgumentTypeError("boolean value expected")
 
+def submit_prefetched_pdbs(work_queue, executor, get_pdbs_fn, data_loader, max_length, num_examples):
+    work_queue.put_nowait(executor.submit(get_pdbs_fn, data_loader, 1, max_length, num_examples))
+
+def get_next_prefetched_pdbs(work_queue, executor, get_pdbs_fn, data_loader, max_length, num_examples):
+    if work_queue.empty():
+        submit_prefetched_pdbs(work_queue, executor, get_pdbs_fn, data_loader, max_length, num_examples)
+    pdb_dict = work_queue.get().result()
+    submit_prefetched_pdbs(work_queue, executor, get_pdbs_fn, data_loader, max_length, num_examples)
+    return pdb_dict
+
 def main(args):
     import json, time, os, sys, glob
     import shutil
@@ -184,10 +194,10 @@ def main(args):
         q = queue.Queue(maxsize=args.prefetch_batches)
         p = queue.Queue(maxsize=args.prefetch_batches)
         for i in range(args.prefetch_batches):
-            q.put_nowait(executor.submit(get_pdbs, train_loader, 1, args.max_protein_length, args.num_examples_per_epoch))
-            p.put_nowait(executor.submit(get_pdbs, valid_loader, 1, args.max_protein_length, args.num_examples_per_epoch))
-        pdb_dict_train = q.get().result()
-        pdb_dict_valid = p.get().result()
+            submit_prefetched_pdbs(q, executor, get_pdbs, train_loader, args.max_protein_length, args.num_examples_per_epoch)
+            submit_prefetched_pdbs(p, executor, get_pdbs, valid_loader, args.max_protein_length, args.num_examples_per_epoch)
+        pdb_dict_train = get_next_prefetched_pdbs(q, executor, get_pdbs, train_loader, args.max_protein_length, args.num_examples_per_epoch)
+        pdb_dict_valid = get_next_prefetched_pdbs(p, executor, get_pdbs, valid_loader, args.max_protein_length, args.num_examples_per_epoch)
        
         dataset_train = StructureDataset(pdb_dict_train, truncate=None, max_length=args.max_protein_length) 
         dataset_valid = StructureDataset(pdb_dict_valid, truncate=None, max_length=args.max_protein_length)
@@ -204,14 +214,12 @@ def main(args):
             train_acc = 0.
             if e % args.reload_data_every_n_epochs == 0:
                 if reload_c != 0:
-                    pdb_dict_train = q.get().result()
+                    pdb_dict_train = get_next_prefetched_pdbs(q, executor, get_pdbs, train_loader, args.max_protein_length, args.num_examples_per_epoch)
                     dataset_train = StructureDataset(pdb_dict_train, truncate=None, max_length=args.max_protein_length)
                     loader_train = StructureLoader(dataset_train, batch_size=args.batch_size)
-                    pdb_dict_valid = p.get().result()
+                    pdb_dict_valid = get_next_prefetched_pdbs(p, executor, get_pdbs, valid_loader, args.max_protein_length, args.num_examples_per_epoch)
                     dataset_valid = StructureDataset(pdb_dict_valid, truncate=None, max_length=args.max_protein_length)
                     loader_valid = StructureLoader(dataset_valid, batch_size=args.batch_size)
-                    q.put_nowait(executor.submit(get_pdbs, train_loader, 1, args.max_protein_length, args.num_examples_per_epoch))
-                    p.put_nowait(executor.submit(get_pdbs, valid_loader, 1, args.max_protein_length, args.num_examples_per_epoch))
                 reload_c += 1
             for _, batch in enumerate(loader_train):
                 start_batch = time.time()

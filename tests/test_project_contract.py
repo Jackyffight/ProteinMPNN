@@ -139,6 +139,53 @@ class TrainingContractTest(unittest.TestCase):
         self.assertTrue(unscale < clip < step, "expected order: unscale_ -> clip_grad_norm_ -> scaler.step")
 
 
+class PrefetchQueueTest(unittest.TestCase):
+    def test_consuming_one_prefetch_immediately_schedules_the_next(self):
+        import queue
+
+        sys.path.insert(0, str(ROOT / "repo/training"))
+        try:
+            from training import get_next_prefetched_pdbs, submit_prefetched_pdbs
+        finally:
+            sys.path.pop(0)
+
+        class ImmediateFuture:
+            def __init__(self, value):
+                self.value = value
+
+            def result(self):
+                return self.value
+
+        class ImmediateExecutor:
+            def __init__(self):
+                self.calls = 0
+
+            def submit(self, fn, *args):
+                self.calls += 1
+                return ImmediateFuture(fn(*args))
+
+        def fake_get_pdbs(data_loader, repeat, max_length, num_examples):
+            return {
+                "data_loader": data_loader,
+                "repeat": repeat,
+                "max_length": max_length,
+                "num_examples": num_examples,
+            }
+
+        work_queue = queue.Queue(maxsize=1)
+        executor = ImmediateExecutor()
+        submit_prefetched_pdbs(work_queue, executor, fake_get_pdbs, "train", 10000, 5000)
+
+        first = get_next_prefetched_pdbs(work_queue, executor, fake_get_pdbs, "train", 10000, 5000)
+        self.assertEqual(first["num_examples"], 5000)
+        self.assertFalse(work_queue.empty(), "prefetch queue must be refilled after consumption")
+
+        second = get_next_prefetched_pdbs(work_queue, executor, fake_get_pdbs, "train", 10000, 5000)
+        self.assertEqual(second["max_length"], 10000)
+        self.assertFalse(work_queue.empty(), "prefetch_batches=1 must not deadlock on later reloads")
+        self.assertEqual(executor.calls, 3)
+
+
 @unittest.skipUnless(HAS_TRAINING_DEPS, "training dependencies not installed")
 class StructureLoaderBatchingTest(unittest.TestCase):
     def test_sequences_larger_than_token_budget_form_singleton_batches(self):
