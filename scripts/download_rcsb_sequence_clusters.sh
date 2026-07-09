@@ -56,11 +56,14 @@ echo "dest: $DEST"
 
 curl \
   --fail \
+  --http1.1 \
   --location \
   --retry 20 \
+  --retry-all-errors \
   --retry-delay 10 \
   --retry-connrefused \
   --connect-timeout 30 \
+  --continue-at - \
   --output "$DEST.tmp" \
   "$URL" 2>&1 | tee "$LOG_DIR/sequence_clusters_${SEQ_ID}_$(date +%Y%m%d%H%M%S).log"
 mv "$DEST.tmp" "$DEST"

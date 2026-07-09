@@ -86,14 +86,21 @@ Initial build stages:
 5. filter proteins by experimental method, resolution, polymer type, missing atoms,
    chain length, and residue alphabet
 6. create train/valid/test split by cluster id
-7. write `list.csv`, `valid_clusters.txt`, `test_clusters.txt`, and `pdb/**/*.pt`
-8. run smoke training against the new processed dataset
+7. write `manifest.json`, `index.jsonl`, `records.jsonl`, `list.csv`, split
+   files, and `shards/*.tar`
+8. run smoke training against the new tar-shard dataset
 
 Build the current 2026 snapshot:
 
 ```bash
 cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 scripts/build_pdb_2026_dataset.sh
+```
+
+Build tar shards directly from an existing raw snapshot:
+
+```bash
+scripts/build_pdb_2026_tar_shards.sh --force
 ```
 
 Build the raw 2026 snapshot on dev2 for later transfer:

@@ -7,6 +7,7 @@ import argparse
 import csv
 import gzip
 import hashlib
+import io
 import json
 import math
 import os
@@ -57,6 +58,7 @@ ATOM_INDEX = {"N": 0, "CA": 1, "C": 2, "O": 3}
 CHAIN_IDS = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
 CLUSTER_MAP: dict[tuple[str, str], int] = {}
 ENTRY_METADATA: dict[str, dict] = {}
+TAR_SHARD_FORMAT = "proteinmpnn.tar_shard.v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -406,10 +408,13 @@ def parse_one(path_str: str, config: dict) -> dict:
         return {"status": "skipped", "reason": "too_many_chains", "path": path_str}
 
     remap = {source: CHAIN_IDS[i] for i, source in enumerate(sorted(chains.keys()))}
+    write_pt = config.get("write_pt", True)
     out_dir = Path(config["out_dir"]) / "pdb" / entry_id[1:3]
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if write_pt:
+        out_dir.mkdir(parents=True, exist_ok=True)
 
     remapped_chain_ids = []
+    chain_payloads = {}
     rows = []
     sequences = []
     for source_chain_id, chain in sorted(chains.items()):
@@ -426,7 +431,9 @@ def parse_one(path_str: str, config: dict) -> dict:
             "source_chain_id": source_chain_id,
             "source_entity_id": chain["entity_id"],
         }
-        torch.save(chain_payload, out_dir / f"{entry_id}_{chain_id}.pt")
+        chain_payloads[chain_id] = chain_payload
+        if write_pt:
+            torch.save(chain_payload, out_dir / f"{entry_id}_{chain_id}.pt")
         cluster = cluster_for(pdb_id, chain["entity_id"], chain["seq"])
         rows.append(
             {
@@ -464,15 +471,28 @@ def parse_one(path_str: str, config: dict) -> dict:
         "asmb_chains": [",".join(remapped_chain_ids)],
         "asmb_xform0": torch.eye(4, dtype=torch.float32).reshape(1, 4, 4),
     }
-    torch.save(meta, out_dir / f"{entry_id}.pt")
+    if write_pt:
+        torch.save(meta, out_dir / f"{entry_id}.pt")
 
-    return {
+    result = {
         "status": "ok",
         "path": path_str,
         "entry_id": entry_id,
         "chains": len(rows),
         "rows": rows,
     }
+    if config.get("return_payload", False):
+        payload = {
+            "format": TAR_SHARD_FORMAT,
+            "entry_id": entry_id,
+            "rows": rows,
+            "meta": meta,
+            "chains": chain_payloads,
+        }
+        buffer = io.BytesIO()
+        torch.save(payload, buffer)
+        result["payload"] = buffer.getvalue()
+    return result
 
 
 def write_splits(rows: list[dict], out_dir: Path, valid_frac: float, test_frac: float, seed: int) -> dict:

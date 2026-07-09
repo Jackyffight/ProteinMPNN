@@ -12,7 +12,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dest", required=True, help="Destination raw/assemblies_mmcif directory.")
     parser.add_argument("--base-url", default=BASE_URL)
     parser.add_argument("--workers", type=int, default=32)
+    parser.add_argument("--max-in-flight", type=int, default=0)
     parser.add_argument("--retries", type=int, default=20)
     parser.add_argument("--retry-delay", type=float, default=5.0)
     parser.add_argument("--assembly-id", default="all", help="all or an assembly id such as 1.")
@@ -189,6 +190,12 @@ def local_size(path: Path) -> int:
     except FileNotFoundError:
         return 0
 
+def size_matches(actual: int, expected: int) -> bool:
+    if expected <= 0 or actual <= 0:
+        return False
+    tolerance = max(4096, int(expected * 0.002))
+    return abs(actual - expected) <= tolerance
+
 
 def download_one(record: dict, dest: Path, retries: int, retry_delay: float) -> tuple[str, int]:
     target = dest / record["relpath"]
@@ -197,9 +204,9 @@ def download_one(record: dict, dest: Path, retries: int, retry_delay: float) -> 
     current = local_size(target)
     if expected_size == 0 and current > 0:
         return "skipped", current
-    if expected_size > 0 and current == expected_size:
+    if expected_size > 0 and size_matches(current, expected_size):
         return "skipped", expected_size
-    if expected_size > 0 and current > expected_size:
+    if expected_size > 0 and current > expected_size and not size_matches(current, expected_size):
         target.unlink()
         current = 0
 
@@ -221,6 +228,14 @@ def download_one(record: dict, dest: Path, retries: int, retry_delay: float) -> 
                 if current > 0 and response.status == 200:
                     mode = "wb"
                     current = 0
+                full_response_size = 0
+                if current == 0:
+                    content_length = response.headers.get("Content-Length")
+                    if content_length:
+                        try:
+                            full_response_size = int(content_length)
+                        except ValueError:
+                            full_response_size = 0
                 with tmp.open(mode) as handle:
                     while True:
                         chunk = response.read(1024 * 1024)
@@ -228,10 +243,24 @@ def download_one(record: dict, dest: Path, retries: int, retry_delay: float) -> 
                             break
                         handle.write(chunk)
             got = local_size(tmp)
-            if expected_size == 0 or got == expected_size:
+            if (
+                expected_size == 0
+                or (full_response_size > 0 and got == full_response_size)
+                or size_matches(got, expected_size)
+            ):
                 tmp.replace(target)
                 return "downloaded", got
             current = got
+        except urllib.error.HTTPError as exc:
+            if exc.code == 416 and current > 0 and size_matches(current, expected_size):
+                tmp.replace(target)
+                return "downloaded", current
+            if exc.code == 416 and tmp.exists():
+                tmp.unlink()
+                current = 0
+            if attempt == retries:
+                return f"failed:{type(exc).__name__}", 0
+            time.sleep(retry_delay)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             if attempt == retries:
                 return f"failed:{type(exc).__name__}", 0
@@ -268,21 +297,42 @@ def main() -> int:
     counts: dict[str, int] = {}
     bytes_done = 0
     started = time.time()
+    max_in_flight = args.max_in_flight if args.max_in_flight > 0 else args.workers * 4
+    max_in_flight = max(args.workers, max_in_flight)
+    record_iter = iter(records)
+    submitted = 0
+    completed = 0
+
+    def submit_until_full(executor: ThreadPoolExecutor, futures: dict) -> None:
+        nonlocal submitted
+        while len(futures) < max_in_flight:
+            try:
+                record = next(record_iter)
+            except StopIteration:
+                break
+            future = executor.submit(download_one, record, dest, args.retries, args.retry_delay)
+            futures[future] = record
+            submitted += 1
+
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {
-            executor.submit(download_one, record, dest, args.retries, args.retry_delay): record
-            for record in records
-        }
-        for index, future in enumerate(as_completed(futures), 1):
-            status, size = future.result()
-            counts[status] = counts.get(status, 0) + 1
-            bytes_done += size
-            if index % 1000 == 0 or status.startswith("failed"):
-                print(
-                    f"done={index}/{len(records)} bytes_done_gib={bytes_done / 1024**3:.1f} "
-                    f"counts={counts}",
-                    flush=True,
-                )
+        futures: dict = {}
+        submit_until_full(executor, futures)
+        while futures:
+            done, _ = wait(futures, return_when=FIRST_COMPLETED)
+            for future in done:
+                futures.pop(future)
+                status, size = future.result()
+                completed += 1
+                counts[status] = counts.get(status, 0) + 1
+                bytes_done += size
+                if completed % 1000 == 0 or status.startswith("failed"):
+                    print(
+                        f"done={completed}/{len(records)} submitted={submitted} "
+                        f"in_flight={len(futures)} bytes_done_gib={bytes_done / 1024**3:.1f} "
+                        f"counts={counts}",
+                        flush=True,
+                    )
+            submit_until_full(executor, futures)
 
     elapsed = time.time() - started
     failed = sum(count for status, count in counts.items() if status.startswith("failed"))
