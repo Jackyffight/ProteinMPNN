@@ -1,11 +1,15 @@
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 HAS_JSONSCHEMA = importlib.util.find_spec("jsonschema") is not None
+HAS_TRAINING_DEPS = all(
+    importlib.util.find_spec(name) is not None for name in ("dateutil", "numpy", "torch")
+)
 
 
 class LauncherContractTest(unittest.TestCase):
@@ -133,6 +137,28 @@ class TrainingContractTest(unittest.TestCase):
         clip = training.index("clip_grad_norm_", unscale)
         step = training.index("scaler.step(optimizer)", clip)
         self.assertTrue(unscale < clip < step, "expected order: unscale_ -> clip_grad_norm_ -> scaler.step")
+
+
+@unittest.skipUnless(HAS_TRAINING_DEPS, "training dependencies not installed")
+class StructureLoaderBatchingTest(unittest.TestCase):
+    def test_sequences_larger_than_token_budget_form_singleton_batches(self):
+        sys.path.insert(0, str(ROOT / "repo/training"))
+        try:
+            from utils import StructureLoader
+        finally:
+            sys.path.pop(0)
+
+        dataset = [
+            {"name": "short", "seq": "A" * 10},
+            {"name": "long_a", "seq": "A" * 7000},
+            {"name": "long_b", "seq": "A" * 8000},
+        ]
+        loader = StructureLoader(dataset, batch_size=6000)
+        batches = list(loader)
+
+        self.assertTrue(all(batches), "StructureLoader must never yield empty batches")
+        names = sorted(item["name"] for batch in batches for item in batch)
+        self.assertEqual(names, ["long_a", "long_b", "short"])
 
 
 class DesignManifestSchemaTest(unittest.TestCase):
