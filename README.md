@@ -142,6 +142,18 @@ new optimizer.
 `--resume` is reserved for `epoch_last.pt` or another checkpoint written by this
 training loop.
 
+After the pilot passes, start the conservative formal continuation stage:
+
+```bash
+scripts/run_2026_v1_stage1_a100.sh --dry-run
+scripts/run_2026_v1_stage1_a100.sh
+```
+
+This stage uses one A100, all available v1 training clusters, 20 epochs, a
+10,000-token batch budget, bounded single-process prefetch, and checkpoints every
+5 epochs. The current training loop does not implement DDP; a comma-separated
+GPU list is rejected instead of silently using only one of the requested GPUs.
+
 Full baseline from data download through training:
 
 ```bash

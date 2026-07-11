@@ -20,6 +20,8 @@ SEED="${SEED:-42}"
 LOADER_WORKERS="${LOADER_WORKERS:-0}"
 PREFETCH_WORKERS="${PREFETCH_WORKERS:-1}"
 PREFETCH_BATCHES="${PREFETCH_BATCHES:-1}"
+SAVE_EVERY="${SAVE_EVERY:-10}"
+RELOAD_EVERY="${RELOAD_EVERY:-2}"
 DRY_RUN=false
 
 usage() {
@@ -27,9 +29,10 @@ usage() {
 Usage:
   scripts/run_2026_v1_pilot_a100.sh [--dry-run]
 
-Run the single-A100, one-epoch ProteinMPNN v1 continuation pilot from the
-official v_48_020 weights. Override settings with environment variables such as
-DEVICES, RUN_NAME, NUM_EXAMPLES, BATCH_TOKENS, DATA_DIR, or OUTPUT_DIR.
+Run the guarded single-A100 ProteinMPNN v1 continuation launcher from the
+official v_48_020 weights. Its defaults are a one-epoch pilot. Override settings
+with environment variables such as DEVICES, RUN_NAME, NUM_EPOCHS, NUM_EXAMPLES,
+BATCH_TOKENS, DATA_DIR, or OUTPUT_DIR.
 EOF
 }
 
@@ -43,7 +46,7 @@ done
 
 if ! [[ "$DEVICES" =~ ^[0-9]+$ ]]; then
   echo "Error: DEVICES must contain exactly one numeric GPU index, got: $DEVICES" >&2
-  echo "This pilot is single-GPU; do not pass 0,1,2,3." >&2
+  echo "This launcher is single-GPU; do not pass 0,1,2,3." >&2
   exit 1
 fi
 
@@ -113,6 +116,8 @@ command=(
   --num-examples "$NUM_EXAMPLES"
   --batch-tokens "$BATCH_TOKENS"
   --max-protein-length "$MAX_PROTEIN_LENGTH"
+  --save-every "$SAVE_EVERY"
+  --reload-every "$RELOAD_EVERY"
   --seed "$SEED"
   --loader-workers "$LOADER_WORKERS"
   --prefetch-workers "$PREFETCH_WORKERS"
@@ -127,6 +132,8 @@ echo "device: $DEVICES"
 echo "epochs: $NUM_EPOCHS"
 echo "examples: $NUM_EXAMPLES"
 echo "batch_tokens: $BATCH_TOKENS"
+echo "save_every: $SAVE_EVERY"
+echo "reload_every: $RELOAD_EVERY"
 
 if [ "$DRY_RUN" = true ]; then
   printf 'command:'

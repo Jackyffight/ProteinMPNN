@@ -105,7 +105,9 @@ class LauncherContractTest(unittest.TestCase):
 
     def test_a100_v1_pilot_script_is_guarded_and_dry_runnable(self):
         script_path = ROOT / "scripts/run_2026_v1_pilot_a100.sh"
+        stage1_path = ROOT / "scripts/run_2026_v1_stage1_a100.sh"
         script = script_path.read_text(encoding="utf-8")
+        stage1 = stage1_path.read_text(encoding="utf-8")
         checkpoint_script = (ROOT / "scripts/ensure_official_checkpoint.sh").read_text(
             encoding="utf-8"
         )
@@ -116,7 +118,13 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("do not pass 0,1,2,3", script)
         self.assertIn("--init-checkpoint", script)
         self.assertIn("--dry-run", script)
+        self.assertIn("--save-every", script)
+        self.assertIn("--reload-every", script)
         self.assertIn("ensure_official_checkpoint.sh", script)
+        self.assertIn('NUM_EPOCHS="${NUM_EPOCHS:-20}"', stage1)
+        self.assertIn('NUM_EXAMPLES="${NUM_EXAMPLES:-1000000}"', stage1)
+        self.assertIn('SAVE_EVERY="${SAVE_EVERY:-5}"', stage1)
+        self.assertIn("run_2026_v1_pilot_a100.sh", stage1)
         self.assertIn("dauparas/ProteinMPNN", checkpoint_script)
         self.assertIn("8907e6671bfbfc92303b5f79c4b5e6ce47cdef57", checkpoint_script)
         self.assertIn("6681301", checkpoint_script)
@@ -176,6 +184,20 @@ class LauncherContractTest(unittest.TestCase):
             )
             self.assertIn(f"--data-dir {data_dir}", result.stdout)
             self.assertIn(f"--init-checkpoint {checkpoint}", result.stdout)
+
+            stage1_env = env.copy()
+            stage1_env["OUTPUT_DIR"] = str(root / "stage1-output")
+            stage1_result = subprocess.run(
+                [str(stage1_path), "--dry-run"],
+                cwd=ROOT,
+                env=stage1_env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertIn("--num-epochs 20", stage1_result.stdout)
+            self.assertIn("--num-examples 1000000", stage1_result.stdout)
+            self.assertIn("--save-every 5", stage1_result.stdout)
 
             env["DEVICES"] = "0,1"
             rejected = subprocess.run(

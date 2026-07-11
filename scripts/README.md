@@ -52,6 +52,8 @@ Validated 2026 v1 continuation pilot on one A100:
 ```bash
 scripts/run_2026_v1_pilot_a100.sh --dry-run
 scripts/run_2026_v1_pilot_a100.sh
+scripts/run_2026_v1_stage1_a100.sh --dry-run
+scripts/run_2026_v1_stage1_a100.sh
 ```
 
 The pilot script uses the pinned GPU-server paths from `env_nas.sh`, validates
@@ -59,6 +61,11 @@ the dataset manifest and validation result, and refuses multi-GPU device lists o
 an existing output directory. It verifies the ignored official `v_48_020.pt`
 file by size and SHA256 before training, downloading a clean copy from the
 upstream ProteinMPNN repository when the file is absent or invalid.
+
+The stage-1 script reuses the same guards and runs 20 continuation epochs over
+all available v1 training clusters, saving periodic checkpoints every 5 epochs.
+It is intentionally single-GPU because this training loop does not yet implement
+DDP or distributed metric reduction.
 
 Current unmeasured presets mirror the mRNABERT launcher style: use `v100`
 for conservative token budgets and `a100` for larger token budgets. Run the
