@@ -103,6 +103,81 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn('--loader-workers "${LOADER_WORKERS:-0}"', a100)
         self.assertIn('--prefetch-workers "${PREFETCH_WORKERS:-2}"', a100)
 
+    def test_a100_v1_pilot_script_is_guarded_and_dry_runnable(self):
+        script_path = ROOT / "scripts/run_2026_v1_pilot_a100.sh"
+        script = script_path.read_text(encoding="utf-8")
+
+        self.assertIn("PROTEINMPNN_V1_DATA_DIR", script)
+        self.assertIn("proteinmpnn.tar_shard.v2", script)
+        self.assertIn("structure_with_target_chain_ids", script)
+        self.assertIn("do not pass 0,1,2,3", script)
+        self.assertIn("--init-checkpoint", script)
+        self.assertIn("--dry-run", script)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            shards_dir = data_dir / "shards"
+            shards_dir.mkdir(parents=True)
+            for filename in (
+                "list.csv",
+                "index.jsonl",
+                "records.jsonl",
+                "valid_clusters.txt",
+                "test_clusters.txt",
+            ):
+                (data_dir / filename).write_text("fixture\n", encoding="utf-8")
+            (shards_dir / "shard_000000.tar").touch()
+            (data_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "format": "proteinmpnn.tar_shard.v2",
+                        "payload_schema": "structure_with_target_chain_ids",
+                        "record_count": 1,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (data_dir / "validation.json").write_text(
+                json.dumps({"status": "ok", "records": 1, "shards_checked": 1}),
+                encoding="utf-8",
+            )
+            checkpoint = root / "official.pt"
+            checkpoint.write_text("fixture", encoding="utf-8")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "DATA_DIR": str(data_dir),
+                    "INIT_CHECKPOINT": str(checkpoint),
+                    "OUTPUT_DIR": str(root / "output"),
+                    "RUN_NAME": "contract-pilot",
+                    "PYTHON_BIN": sys.executable,
+                    "DEVICES": "0",
+                }
+            )
+            result = subprocess.run(
+                [str(script_path), "--dry-run"],
+                cwd=ROOT,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertIn(f"--data-dir {data_dir}", result.stdout)
+            self.assertIn(f"--init-checkpoint {checkpoint}", result.stdout)
+
+            env["DEVICES"] = "0,1"
+            rejected = subprocess.run(
+                [str(script_path), "--dry-run"],
+                cwd=ROOT,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("single-GPU", rejected.stderr)
+
     def test_dataset_download_script_uses_range_parts_and_checksum(self):
         script = (ROOT / "scripts/download_dataset_parts.sh").read_text(encoding="utf-8")
         stage_script = (ROOT / "scripts/stage_existing_dataset.sh").read_text(encoding="utf-8")

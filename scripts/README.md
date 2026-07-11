@@ -47,6 +47,17 @@ For A100:
 scripts/full_train_a100.sh
 ```
 
+Validated 2026 v1 continuation pilot on one A100:
+
+```bash
+scripts/run_2026_v1_pilot_a100.sh --dry-run
+scripts/run_2026_v1_pilot_a100.sh
+```
+
+The pilot script uses the pinned GPU-server paths from `env_nas.sh`, validates
+the dataset manifest and validation result, and refuses multi-GPU device lists or
+an existing output directory.
+
 Current unmeasured presets mirror the mRNABERT launcher style: use `v100`
 for conservative token budgets and `a100` for larger token budgets. Run the
 throughput benchmark before long training on a new host, then keep the measured

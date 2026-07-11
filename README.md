@@ -127,17 +127,16 @@ cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
 MAX_EXAMPLES=1000 SPLIT=valid scripts/evaluate_official_checkpoint.sh
 ```
 
-Start a new run from the official model weights only after the replacement 2026
-dataset passes the curation and split checks:
+Start the guarded single-A100 pilot from the official model weights:
 
 ```bash
-./run_train.sh v100 \
-  --data-dir /path/to/corrected/proteinmpnn_pdb_2026 \
-  --init-checkpoint repo/vanilla_model_weights/v_48_020.pt \
-  --run-name proteinmpnn-2026-continued-v48-noise020
+scripts/run_2026_v1_pilot_a100.sh --dry-run
+scripts/run_2026_v1_pilot_a100.sh
 ```
 
-`--init-checkpoint` starts step and epoch at zero with a new optimizer.
+The script checks the pinned v1 dataset, validation result, checkpoint, selected
+GPU, and output path before delegating to `run_train.sh`. `--init-checkpoint`
+starts step and epoch at zero with a new optimizer.
 `--resume` is reserved for `epoch_last.pt` or another checkpoint written by this
 training loop.
 

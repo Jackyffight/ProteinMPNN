@@ -34,13 +34,11 @@ later checkpoints so NLL, perplexity, and accuracy are directly comparable.
 ## 2. Continued Training
 
 The corrected 2026 v1 dataset passed its full conformance validator on
-2026-07-11. Start a new optimizer from the official model weights:
+2026-07-11. Start the guarded single-A100 pilot from the official model weights:
 
 ```bash
-./run_train.sh v100 \
-  --data-dir "$PROTEINMPNN_V1_DATA_DIR" \
-  --init-checkpoint repo/vanilla_model_weights/v_48_020.pt \
-  --run-name proteinmpnn-2026-continued-v48-noise020
+scripts/run_2026_v1_pilot_a100.sh --dry-run
+scripts/run_2026_v1_pilot_a100.sh
 ```
 
 Do not use the quarantined `prototype-v0` 2026 tar shards for this run. The eventual
