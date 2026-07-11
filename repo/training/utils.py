@@ -7,6 +7,12 @@ import time
 import random
 import os
 
+def load_torch_file(path):
+    try:
+        return torch.load(path, map_location="cpu", weights_only=True)
+    except TypeError:
+        return torch.load(path, map_location="cpu")
+
 class StructureDataset():
     def __init__(self, pdb_dict_list, verbose=True, truncate=None, max_length=100,
         alphabet='ACDEFGHIKLMNPQRSTVWYX'):
@@ -242,7 +248,7 @@ def loader_pdb(item,params):
     # load metadata
     if not os.path.isfile(PREFIX+".pt"):
         return {'seq': np.zeros(5)}
-    meta = torch.load(PREFIX+".pt")
+    meta = load_torch_file(PREFIX+".pt")
     asmb_ids = meta['asmb_ids']
     asmb_chains = meta['asmb_chains']
     chids = np.array(meta['chains'])
@@ -254,7 +260,7 @@ def loader_pdb(item,params):
     # if the chains is missing is missing from all the assemblies
     # then return this chain alone
     if len(asmb_candidates)<1:
-        chain = torch.load("%s_%s.pt"%(PREFIX,chid))
+        chain = load_torch_file("%s_%s.pt"%(PREFIX,chid))
         L = len(chain['seq'])
         return {'seq'    : chain['seq'],
                 'xyz'    : chain['xyz'],
@@ -263,13 +269,13 @@ def loader_pdb(item,params):
                 'label'  : item[0]}
 
     # randomly pick one assembly from candidates
-    asmb_i = random.sample(list(asmb_candidates), 1)
+    asmb_i = random.choice(sorted(asmb_candidates, key=str))
 
     # indices of selected transforms
     idx = np.where(np.array(asmb_ids)==asmb_i)[0]
 
     # load relevant chains
-    chains = {c:torch.load("%s_%s.pt"%(PREFIX,c))
+    chains = {c:load_torch_file("%s_%s.pt"%(PREFIX,c))
               for i in idx for c in asmb_chains[i]
               if c in meta['chains']}
 
@@ -288,7 +294,7 @@ def loader_pdb(item,params):
         chains_k = s1&s2
 
         # transform selected chains 
-        for c in chains_k:
+        for c in sorted(chains_k):
             try:
                 xyz = chains[c]['xyz']
                 xyz_ru = torch.einsum('bij,raj->brai', u, xyz) + r[:,None,None,:]

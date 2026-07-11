@@ -1,7 +1,10 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -24,11 +27,81 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("--save_best", launcher)
         self.assertIn("run_name", launcher.lower())
 
+    def test_launcher_separates_weight_initialization_from_resume(self):
+        launcher = (ROOT / "run_train.sh").read_text(encoding="utf-8")
+        training = (ROOT / "repo/training/training.py").read_text(encoding="utf-8")
+
+        self.assertIn("--init-checkpoint", launcher)
+        self.assertIn("--init_checkpoint", launcher)
+        self.assertIn("--resume and --init-checkpoint are mutually exclusive", launcher)
+        self.assertIn("add_mutually_exclusive_group", training)
+        self.assertIn("require_resume_state", training)
+
+    def test_launcher_passes_only_the_selected_checkpoint_argument(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            (data_dir / "pdb").mkdir(parents=True)
+            (data_dir / "list.csv").write_text(
+                "CHAINID,DEPOSITION,RESOLUTION,HASH,CLUSTER,SEQUENCE\n",
+                encoding="utf-8",
+            )
+            (data_dir / "valid_clusters.txt").touch()
+            (data_dir / "test_clusters.txt").touch()
+            checkpoint = root / "official.pt"
+            checkpoint.touch()
+            capture_path = root / "args.txt"
+            fake_python = root / "python"
+            fake_python.write_text(
+                "#!/usr/bin/env bash\n"
+                "if [ \"${1:-}\" = - ]; then cat >/dev/null; exit 0; fi\n"
+                "printf '%s\\n' \"$@\" > \"$CAPTURE_ARGS\"\n",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            env = os.environ.copy()
+            env["PROTEINMPNN_PYTHON"] = str(fake_python)
+            env["CAPTURE_ARGS"] = str(capture_path)
+
+            subprocess.run(
+                [
+                    str(ROOT / "run_train.sh"),
+                    "smoke",
+                    "--data-dir",
+                    str(data_dir),
+                    "--output-dir",
+                    str(root / "output"),
+                    "--init-checkpoint",
+                    str(checkpoint),
+                ],
+                cwd=ROOT,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            arguments = capture_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertIn("--init_checkpoint", arguments)
+        self.assertNotIn("--previous_checkpoint", arguments)
+
     def test_v100_preset_uses_smaller_token_budget_than_a100(self):
         launcher = (ROOT / "run_train.sh").read_text(encoding="utf-8")
 
         self.assertIn("BATCH_TOKENS=\"${BATCH_TOKENS:-6000}\"", launcher)
         self.assertIn("BATCH_TOKENS=\"${BATCH_TOKENS:-10000}\"", launcher)
+
+    def test_training_process_defaults_are_memory_bounded(self):
+        launcher = (ROOT / "run_train.sh").read_text(encoding="utf-8")
+        v100 = (ROOT / "scripts/full_train_v100.sh").read_text(encoding="utf-8")
+        a100 = (ROOT / "scripts/full_train_a100.sh").read_text(encoding="utf-8")
+
+        self.assertIn('LOADER_WORKERS="${LOADER_WORKERS:-0}"', launcher)
+        self.assertIn('PREFETCH_WORKERS="${PREFETCH_WORKERS:-1}"', launcher)
+        self.assertIn('--loader-workers "${LOADER_WORKERS:-0}"', v100)
+        self.assertIn('--prefetch-workers "${PREFETCH_WORKERS:-1}"', v100)
+        self.assertIn('--loader-workers "${LOADER_WORKERS:-0}"', a100)
+        self.assertIn('--prefetch-workers "${PREFETCH_WORKERS:-2}"', a100)
 
     def test_dataset_download_script_uses_range_parts_and_checksum(self):
         script = (ROOT / "scripts/download_dataset_parts.sh").read_text(encoding="utf-8")
@@ -80,7 +153,15 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("return_payload", builder)
         self.assertIn("ProcessPoolExecutor", tar_builder)
         self.assertIn("max_in_flight", tar_builder)
+        self.assertIn("--max-in-flight", builder)
+        self.assertIn("FIRST_COMPLETED", builder)
         self.assertIn("manifest.json", tar_builder)
+        self.assertIn("proteinmpnn.tar_shard.v2", builder)
+        self.assertIn("target_chain_ids", builder)
+        self.assertIn("validate_tar_shard_dataset.py", build_tar_script)
+        self.assertIn("--max-context-length", build_tar_script)
+        self.assertIn("structure_with_target_chain_ids", tar_builder)
+        self.assertIn("Refusing to build production splits without homology clusters", build_tar_script)
         self.assertIn("dataset_format", (ROOT / "repo/training/training.py").read_text(encoding="utf-8"))
         self.assertIn("proteinmpnn_pdb_latest_<YYYYMMDD>", versions_doc)
         self.assertIn("Upstream Reference Baseline", versions_doc)
@@ -106,7 +187,7 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("full_sanity.sh", script)
         self.assertIn("benchmark_throughput.sh", script)
         self.assertIn("full_train_${PROFILE}.sh", script)
-        self.assertIn("Baseline From-Scratch Runbook", runbook)
+        self.assertIn("Baseline and Continued-Training Runbook", runbook)
 
     def test_nas_environment_paths_are_pinned(self):
         env_script = (ROOT / "scripts/env_nas.sh").read_text(encoding="utf-8")
@@ -115,6 +196,8 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN", env_script)
         self.assertIn("PROTEINMPNN_DATA_ROOT", env_script)
         self.assertIn("PROTEINMPNN_TAR_SHARD_DATA_DIR", env_script)
+        self.assertIn("PROTEINMPNN_V1_DATA_DIR", env_script)
+        self.assertIn("proteinmpnn_tar_shards_v1", env_script)
         self.assertIn("proteinmpnn_tar_shards", env_script)
         self.assertIn("PROTEINMPNN_OUTPUT_ROOT", env_script)
         self.assertIn("/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN", runbook)
@@ -140,6 +223,17 @@ class TrainingContractTest(unittest.TestCase):
         self.assertIn("--prefetch_workers", training)
         self.assertIn("--tf32", training)
 
+    def test_official_checkpoint_evaluator_uses_training_data_path(self):
+        evaluator = (ROOT / "repo/training/evaluate_checkpoint.py").read_text(encoding="utf-8")
+        wrapper = (ROOT / "scripts/evaluate_official_checkpoint.sh").read_text(encoding="utf-8")
+
+        self.assertIn("build_training_clusters", evaluator)
+        self.assertIn("get_pdbs", evaluator)
+        self.assertIn("featurize", evaluator)
+        self.assertIn("loss_nll", evaluator)
+        self.assertIn("checkpoint_evaluation.v1", evaluator)
+        self.assertIn("v_48_020.pt", wrapper)
+
     def test_amp_gradient_clip_unscales_before_clipping(self):
         # Regression: clipping must run on real (unscaled) gradients under AMP.
         training = (ROOT / "repo/training/training.py").read_text(encoding="utf-8")
@@ -150,6 +244,15 @@ class TrainingContractTest(unittest.TestCase):
 
 
 class PrefetchQueueTest(unittest.TestCase):
+    def test_prefetch_processes_use_spawn_after_torch_initialization(self):
+        sys.path.insert(0, str(ROOT / "repo/training"))
+        try:
+            from training import get_prefetch_context
+        finally:
+            sys.path.pop(0)
+
+        self.assertEqual(get_prefetch_context().get_start_method(), "spawn")
+
     def test_consuming_one_prefetch_immediately_schedules_the_next(self):
         import queue
 

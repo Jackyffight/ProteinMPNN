@@ -30,7 +30,10 @@ class TarShardStore:
         with shard_path.open("rb") as handle:
             handle.seek(row["offset"])
             data = handle.read(row["size"])
-        return torch.load(io.BytesIO(data), map_location="cpu")
+        try:
+            return torch.load(io.BytesIO(data), map_location="cpu", weights_only=True)
+        except TypeError:
+            return torch.load(io.BytesIO(data), map_location="cpu")
 
 
 def get_store(dataset_dir: str | Path) -> TarShardStore:
@@ -68,7 +71,7 @@ def loader_tar_pdb(item, params):
             "label": chain_id,
         }
 
-    asmb_i = random.sample(list(asmb_candidates), 1)
+    asmb_i = random.choice(sorted(asmb_candidates, key=str))
     selected_transform_idx = np.where(np.array(asmb_ids) == asmb_i)[0]
 
     chains = {
@@ -88,7 +91,7 @@ def loader_tar_pdb(item, params):
         s2 = set(asmb_chains[k].split(","))
         chains_k = s1 & s2
 
-        for c in chains_k:
+        for c in sorted(chains_k):
             try:
                 xyz = chains[c]["xyz"]
                 xyz_ru = torch.einsum("bij,raj->brai", u, xyz) + r[:, None, None, :]

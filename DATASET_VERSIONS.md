@@ -45,6 +45,82 @@ Current 2026 build id:
 proteinmpnn_pdb_20260708
 ```
 
+Current artifact status:
+
+```text
+v1 (validated 2026-07-11; training-ready main continuation set)
+```
+
+The older tar-shard build under
+`datasets/proteinmpnn/proteinmpnn_tar_shards` is useful for storage and loader
+testing only. Do not use it for model training or publish metrics from it. The
+audit found these blocking semantic issues:
+
+- residues missing any backbone atom were deleted and the remaining residues
+  compacted, which can create false sequence adjacency
+- each biological assembly file was emitted as a separate learning record,
+  over-weighting PDB entries with many assemblies
+- homology metadata was approximated by position-wise identity instead of a
+  sequence alignment
+- exact processed sequences and PDB entries cross train/valid/test boundaries
+  under the current cluster assignment
+- assemblies above 10,000 residues are silently excluded by the training length
+  filter
+
+The v1 replacement preserves sequence positions with coordinate masks, defines
+one deterministic target-chain example policy, and regenerates splits from the
+final processed sequences with explicit zero-leakage checks. Oversized
+assemblies will be handled as target-chain plus spatial-neighbor/interface crops
+under the token limit; they remain a separate stage until that policy is
+implemented and validated.
+
+### v1 Replacement
+
+The v1 main dataset uses the 2026-07-08 wwPDB snapshot but includes only entries
+deposited after the upstream baseline cutoff:
+
+```text
+2021-08-03 through 2026-07-08
+```
+
+This is the new-data continuation set. The upstream 2021 dataset remains a
+separate replay source rather than being duplicated into v1. Each v1 record has:
+
+- the lowest numbered available biological assembly for one PDB entry
+- one deterministic target chain, selected by complete-backbone residue count,
+  then coverage and source chain ID
+- complete polymer sequence positions with missing coordinates represented by
+  masks instead of deleted residues
+- at most 2,000 total context residues; larger assemblies are written to
+  `build_deferred_oversized.jsonl` for the later crop stage
+- final exact-sequence cluster union followed by hard zero-leakage assertions
+
+Production output:
+
+```text
+proteinmpnn_pdb_20260708/processed/proteinmpnn_tar_shards_v1
+```
+
+Build and automatically validate it with bounded concurrency:
+
+```bash
+DATA_ROOT=/data00/home/wangzhi.wit/models/datasets/proteinmpnn_custom \
+VERSION_ID=proteinmpnn_pdb_20260708 \
+WORKERS=2 MAX_IN_FLIGHT=2 \
+  scripts/build_pdb_2026_tar_shards.sh
+```
+
+The post-build validator checks every payload, coordinate mask, target/index
+mapping, shard checksum, context-length bound, and split assignment, and writes
+`validation.json` only after all checks pass.
+
+The completed production build contains 46,619 target records and 97,952
+context chains across nine shards (8.3 GiB). It retained 2,687,809 unresolved
+polymer positions as masks, deferred 10,166 parsed oversized assemblies for stage
+two, and separately logged 101 compressed raw files above 50 MiB. It reported
+zero parser failures and passed exact-sequence and PDB split leakage checks with
+zero violations.
+
 Purpose:
 
 - build our own current PDB-derived ProteinMPNN training dataset
@@ -74,6 +150,7 @@ Local raw layout:
       metadata/
     processed/
       proteinmpnn/
+      proteinmpnn_tar_shards_v1/
     splits/
 ```
 
@@ -88,13 +165,15 @@ Initial build stages:
 6. create train/valid/test split by cluster id
 7. write `manifest.json`, `index.jsonl`, `records.jsonl`, `list.csv`, split
    files, and `shards/*.tar`
-8. run smoke training against the new tar-shard dataset
+8. pass residue-mask, assembly-weighting, homology, split-leakage, and oversized
+   deferral conformance tests
+9. run smoke training against the corrected tar-shard dataset
 
-Build the current 2026 snapshot:
+Run the resumable download/build pipeline:
 
 ```bash
 cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
-scripts/build_pdb_2026_dataset.sh
+scripts/prepare_pdb_2026_tar_dataset.sh
 ```
 
 Build tar shards directly from an existing raw snapshot:
@@ -122,13 +201,14 @@ DATA_ROOT="$LOCAL_DATA" VERSION_ID="$VERSION" \
 
 PYTHONPATH=/data00/home/wangzhi.wit/models/.pdbbuild_deps \
 DATA_ROOT="$LOCAL_DATA" VERSION_ID="$VERSION" \
-  scripts/build_pdb_2026_dataset.sh --skip-sync --skip-clusters --skip-metadata --workers 32
+WORKERS=2 MAX_IN_FLIGHT=2 \
+  scripts/build_pdb_2026_tar_shards.sh
 ```
 
 Build only structures deposited in 2026:
 
 ```bash
-scripts/build_pdb_2026_dataset.sh --min-date 2026-01-01
+scripts/build_pdb_2026_tar_shards.sh --min-date 2026-01-01
 ```
 
 Do not mix predicted structures into this dataset until the experimental-structure

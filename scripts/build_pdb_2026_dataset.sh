@@ -7,7 +7,8 @@ source "$SCRIPT_DIR/env_nas.sh"
 
 DATA_ROOT="${DATA_ROOT:-$PROTEINMPNN_CUSTOM_DATA_ROOT}"
 VERSION_ID="${VERSION_ID:-proteinmpnn_pdb_20260708}"
-WORKERS="${WORKERS:-16}"
+WORKERS="${WORKERS:-2}"
+MAX_IN_FLIGHT="${MAX_IN_FLIGHT:-2}"
 ASSEMBLY_ID="${ASSEMBLY_ID:-all}"
 MAX_RESOLUTION="${MAX_RESOLUTION:-3.5}"
 MIN_DATE="${MIN_DATE:-}"
@@ -28,7 +29,8 @@ assembly mmCIF snapshot.
 Options:
   --version-id <id>       Dataset version id. Default: proteinmpnn_pdb_20260708.
   --data-root <dir>       Custom dataset root. Default: NAS MPNN custom root.
-  --workers <n>           mmCIF parser workers. Default: 16.
+  --workers <n>           mmCIF parser workers. Default: 2.
+  --max-in-flight <n>     Submitted parser jobs retained in memory. Default: 2.
   --assembly-id <id|all>  Assembly file selector. Default: all.
   --max-resolution <a>    Resolution cutoff. Default: 3.5.
   --min-date <YYYY-MM-DD> Optional deposition lower bound.
@@ -56,6 +58,7 @@ while [ $# -gt 0 ]; do
     --version-id|--version_id) VERSION_ID="$2"; shift 2 ;;
     --data-root|--data_root) DATA_ROOT="$2"; shift 2 ;;
     --workers) WORKERS="$2"; shift 2 ;;
+    --max-in-flight|--max_in_flight) MAX_IN_FLIGHT="$2"; shift 2 ;;
     --assembly-id|--assembly_id) ASSEMBLY_ID="$2"; shift 2 ;;
     --max-resolution|--max_resolution) MAX_RESOLUTION="$2"; shift 2 ;;
     --min-date|--min_date) MIN_DATE="$2"; shift 2 ;;
@@ -96,6 +99,7 @@ args=(
   --cluster-file "$CLUSTER_FILE"
   --entries-index "$ENTRIES_INDEX"
   --workers "$WORKERS"
+  --max-in-flight "$MAX_IN_FLIGHT"
   --assembly-id "$ASSEMBLY_ID"
   --max-resolution "$MAX_RESOLUTION"
   --max-date "$MAX_DATE"

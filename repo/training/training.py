@@ -1,4 +1,5 @@
 import argparse
+import multiprocessing
 import os.path
 
 def str2bool(value):
@@ -10,6 +11,11 @@ def str2bool(value):
     if value in ("no", "false", "f", "0", "n"):
         return False
     raise argparse.ArgumentTypeError("boolean value expected")
+
+def get_prefetch_context():
+    # Forking after ProteinMPNN/PyTorch initialization can inherit locked native
+    # thread-pool state and block every prefetch worker before its first item.
+    return multiprocessing.get_context("spawn")
 
 def submit_prefetched_pdbs(work_queue, executor, get_pdbs_fn, data_loader, max_length, num_examples):
     work_queue.put_nowait(executor.submit(get_pdbs_fn, data_loader, 1, max_length, num_examples))
@@ -40,6 +46,22 @@ def main(args):
     from utils import worker_init_fn, get_pdbs, loader_pdb, build_training_clusters, PDB_dataset, StructureDataset, StructureLoader
     from tar_shard_utils import loader_tar_pdb
     from model_utils import featurize, loss_smoothed, loss_nll, get_std_opt, ProteinMPNN
+    from checkpoint_utils import (
+        checkpoint_metadata,
+        load_checkpoint,
+        load_model_weights,
+        require_resume_state,
+        validate_num_edges,
+    )
+
+    if args.previous_checkpoint and args.init_checkpoint:
+        raise ValueError("--previous_checkpoint and --init_checkpoint are mutually exclusive")
+    if args.num_loader_workers < 0:
+        raise ValueError("--num_loader_workers cannot be negative")
+    if args.prefetch_workers < 1:
+        raise ValueError("--prefetch_workers must be positive")
+    if args.prefetch_batches < 1:
+        raise ValueError("--prefetch_batches must be positive")
 
     device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
     if args.seed >= 0:
@@ -63,12 +85,13 @@ def main(args):
         if not os.path.exists(base_folder + subfolder):
             os.makedirs(base_folder + subfolder)
 
-    PATH = args.previous_checkpoint
+    resume_path = args.previous_checkpoint
+    init_path = args.init_checkpoint
 
     logfile = base_folder + 'log.txt'
     metrics_file = base_folder + 'metrics.jsonl'
     eval_results_file = base_folder + 'eval_results.json'
-    if not PATH:
+    if not resume_path:
         with open(logfile, 'w') as f:
             f.write('Epoch\tTrain\tValidation\n')
         with open(metrics_file, 'w') as f:
@@ -118,9 +141,56 @@ def main(args):
         args.batch_size = 1000
 
     train, valid, test = build_training_clusters(params, args.debug)
+    train_set = PDB_dataset(list(train.keys()), pdb_loader, train, params)
+    train_loader = torch.utils.data.DataLoader(train_set, worker_init_fn=worker_init_fn, **LOAD_PARAM)
+    valid_set = PDB_dataset(list(valid.keys()), pdb_loader, valid, params)
+    valid_loader = torch.utils.data.DataLoader(valid_set, worker_init_fn=worker_init_fn, **LOAD_PARAM)
+
+
+    model = ProteinMPNN(node_features=args.hidden_dim,
+                        edge_features=args.hidden_dim,
+                        hidden_dim=args.hidden_dim,
+                        num_encoder_layers=args.num_encoder_layers,
+                        num_decoder_layers=args.num_decoder_layers,
+                        k_neighbors=args.num_neighbors,
+                        dropout=args.dropout,
+                        augment_eps=args.backbone_noise)
+    model.to(device)
+
+
+    checkpoint = None
+    checkpoint_path = resume_path or init_path
+    if checkpoint_path:
+        checkpoint = load_checkpoint(checkpoint_path, map_location=device)
+        validate_num_edges(checkpoint, args.num_neighbors)
+        if resume_path:
+            require_resume_state(checkpoint, resume_path)
+        load_model_weights(model, checkpoint, checkpoint_path)
+
+    if resume_path:
+        total_step = checkpoint['step']
+        epoch = checkpoint['epoch']
+        best_validation_loss = checkpoint.get('best_validation_loss', float('inf'))
+    else:
+        total_step = 0
+        epoch = 0
+        best_validation_loss = float('inf')
+
+    optimizer = get_std_opt(model.parameters(), args.hidden_dim, total_step)
+
+
+    if resume_path:
+        optimizer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+    initialization_mode = "resume" if resume_path else "checkpoint" if init_path else "random"
     manifest = {
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime()),
         "args": vars(args),
+        "initialization": {
+            "mode": initialization_mode,
+            "checkpoint": os.path.abspath(checkpoint_path) if checkpoint_path else None,
+            "checkpoint_metadata": checkpoint_metadata(checkpoint) if checkpoint is not None else None,
+        },
         "data": {
             "path_for_training_data": data_path,
             "dataset_format": dataset_format,
@@ -150,47 +220,17 @@ def main(args):
             "cuda_device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
             "numpy": np.__version__,
             "device": str(device),
+            "prefetch_start_method": get_prefetch_context().get_start_method(),
         },
     }
     with open(base_folder + 'run_manifest.json', 'w') as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
-     
-    train_set = PDB_dataset(list(train.keys()), pdb_loader, train, params)
-    train_loader = torch.utils.data.DataLoader(train_set, worker_init_fn=worker_init_fn, **LOAD_PARAM)
-    valid_set = PDB_dataset(list(valid.keys()), pdb_loader, valid, params)
-    valid_loader = torch.utils.data.DataLoader(valid_set, worker_init_fn=worker_init_fn, **LOAD_PARAM)
 
 
-    model = ProteinMPNN(node_features=args.hidden_dim, 
-                        edge_features=args.hidden_dim, 
-                        hidden_dim=args.hidden_dim, 
-                        num_encoder_layers=args.num_encoder_layers, 
-                        num_decoder_layers=args.num_decoder_layers,
-                        k_neighbors=args.num_neighbors, 
-                        dropout=args.dropout, 
-                        augment_eps=args.backbone_noise)
-    model.to(device)
-
-
-    if PATH:
-        checkpoint = torch.load(PATH, map_location=device)
-        total_step = checkpoint['step'] #write total_step from the checkpoint
-        epoch = checkpoint['epoch'] #write epoch from the checkpoint
-        model.load_state_dict(checkpoint['model_state_dict'])
-        best_validation_loss = checkpoint.get('best_validation_loss', float('inf'))
-    else:
-        total_step = 0
-        epoch = 0
-        best_validation_loss = float('inf')
-
-    optimizer = get_std_opt(model.parameters(), args.hidden_dim, total_step)
-
-
-    if PATH:
-        optimizer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-
-    with ProcessPoolExecutor(max_workers=args.prefetch_workers) as executor:
+    with ProcessPoolExecutor(
+        max_workers=args.prefetch_workers,
+        mp_context=get_prefetch_context(),
+    ) as executor:
         q = queue.Queue(maxsize=args.prefetch_batches)
         p = queue.Queue(maxsize=args.prefetch_batches)
         for i in range(args.prefetch_batches):
@@ -367,7 +407,9 @@ if __name__ == "__main__":
     argparser.add_argument("--path_for_training_data", type=str, default="my_path/pdb_2021aug02", help="path for loading training data") 
     argparser.add_argument("--dataset_format", choices=["auto", "pt", "tar"], default="auto", help="training dataset storage format")
     argparser.add_argument("--path_for_outputs", type=str, default="./exp_020", help="path for logs and model weights")
-    argparser.add_argument("--previous_checkpoint", type=str, default="", help="path for previous model weights, e.g. file.pt")
+    checkpoint_group = argparser.add_mutually_exclusive_group()
+    checkpoint_group.add_argument("--previous_checkpoint", type=str, default="", help="resume a training checkpoint including optimizer, step, and epoch")
+    checkpoint_group.add_argument("--init_checkpoint", type=str, default="", help="initialize model weights for a new training run")
     argparser.add_argument("--num_epochs", type=int, default=200, help="number of epochs to train for")
     argparser.add_argument("--save_model_every_n_epochs", type=int, default=10, help="save model weights every n epochs")
     argparser.add_argument("--reload_data_every_n_epochs", type=int, default=2, help="reload training data every n epochs")
@@ -385,9 +427,9 @@ if __name__ == "__main__":
     argparser.add_argument("--gradient_norm", type=float, default=-1.0, help="clip gradient norm, set to negative to omit clipping")
     argparser.add_argument("--mixed_precision", type=str2bool, default=True, help="train with mixed precision")
     argparser.add_argument("--seed", type=int, default=42, help="random seed; set to a negative value to leave RNG unseeded")
-    argparser.add_argument("--num_loader_workers", type=int, default=4, help="PyTorch DataLoader workers for raw PDB loading")
-    argparser.add_argument("--prefetch_workers", type=int, default=12, help="ProcessPool workers for structure prefetch")
-    argparser.add_argument("--prefetch_batches", type=int, default=3, help="number of prefetched train/validation structure batches")
+    argparser.add_argument("--num_loader_workers", type=int, default=0, help="nested PyTorch DataLoader workers; keep at 0 unless benchmarked")
+    argparser.add_argument("--prefetch_workers", type=int, default=1, help="spawned ProcessPool workers for structure prefetch")
+    argparser.add_argument("--prefetch_batches", type=int, default=1, help="number of prefetched train/validation structure batches")
     argparser.add_argument("--tf32", type=str2bool, default=True, help="allow TF32 matmul on Ampere and newer GPUs")
     argparser.add_argument("--save_best", type=str2bool, default=True, help="write model_weights/best.pt when validation improves")
  

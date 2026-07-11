@@ -1,6 +1,9 @@
-# Baseline From-Scratch Runbook
+# Baseline and Continued-Training Runbook
 
-This runbook trains the upstream-reference ProteinMPNN baseline from zero.
+The primary baseline is the unchanged published ProteinMPNN checkpoint. A
+from-scratch run remains useful as a reproduction/ablation, but the main 2026
+route starts from the published weights after the replacement dataset passes its
+semantic checks.
 
 ## 0. Environment
 
@@ -14,7 +17,38 @@ python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 
 Use the CUDA PyTorch wheel that matches the training host.
 
-## 1. End-to-End Script
+## 1. Evaluate Published Weights
+
+Evaluate the official `v_48_020.pt` checkpoint on the upstream 2021 validation
+split before training:
+
+```bash
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
+MAX_EXAMPLES=1000 SPLIT=valid scripts/evaluate_official_checkpoint.sh
+```
+
+The result is written to
+`runs/baselines/official-v48-020-valid.json`. Use the same command and seed for
+later checkpoints so NLL, perplexity, and accuracy are directly comparable.
+
+## 2. Continued Training
+
+The corrected 2026 v1 dataset passed its full conformance validator on
+2026-07-11. Start a new optimizer from the official model weights:
+
+```bash
+./run_train.sh v100 \
+  --data-dir "$PROTEINMPNN_V1_DATA_DIR" \
+  --init-checkpoint repo/vanilla_model_weights/v_48_020.pt \
+  --run-name proteinmpnn-2026-continued-v48-noise020
+```
+
+Do not use the quarantined `prototype-v0` 2026 tar shards for this run. The eventual
+training mix should retain a fixed replay sample from the upstream 2021 dataset;
+the exact replay ratio is selected with validation rather than baked into the
+loader prematurely.
+
+## 3. From-Scratch Reproduction
 
 V100:
 
@@ -36,7 +70,7 @@ Dry operational pass without the long full train:
 scripts/run_baseline_from_scratch.sh --profile v100 --devices 0 --no-full
 ```
 
-## 2. Manual Step-by-Step
+## 4. Manual From-Scratch Steps
 
 Fast path if the host can see an existing local copy:
 
@@ -94,7 +128,7 @@ or:
 DEVICES=0 RUN_NAME=proteinmpnn-baseline-a100 scripts/full_train_a100.sh
 ```
 
-## 3. Outputs
+## 5. Outputs
 
 Each run writes:
 

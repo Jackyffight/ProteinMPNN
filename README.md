@@ -33,6 +33,11 @@ The local `repo/` tree contains the upstream ProteinMPNN training/inference file
 needed for from-scratch training. Large datasets and checkpoint weights are kept
 out of git.
 
+The upstream `v_48_020.pt` checkpoint is used in two distinct ways: unchanged as
+the published-model baseline, and as model-weight initialization for a new
+continued-training run. It is not a resumable training checkpoint because it
+does not contain optimizer, step, or epoch state.
+
 ## Data
 
 Full training data is already present locally:
@@ -68,6 +73,18 @@ ProteinMPNN/run_train.sh smoke \
 When `scripts/env_nas.sh` is sourced, the same path is available as
 `$PROTEINMPNN_TAR_SHARD_DATA_DIR`.
 
+The existing 2026 tar-shard artifact is `prototype-v0` and is not training-ready.
+See `DATASET_VERSIONS.md` for the conformance failures that must be fixed before
+it is used for continued training.
+
+The replacement v1 continuation dataset is written under the owned snapshot at
+`processed/proteinmpnn_tar_shards_v1`. It covers post-2021 entries, uses one
+canonical assembly and target per PDB, preserves missing-residue masks, and
+defers contexts above 2,000 residues. `scripts/build_pdb_2026_tar_shards.sh`
+runs its full semantic validator automatically. The 2026-07-11 production build
+passed validation with 46,619 target records, zero parser failures, and zero
+exact-sequence or PDB split leaks.
+
 To download or rebuild the upstream reference archive from HTTP range parts:
 
 ```bash
@@ -101,6 +118,28 @@ python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 Use the CUDA PyTorch build appropriate for the target machine.
 
 ## Run
+
+Evaluate the unchanged official checkpoint first. This uses zero coordinate
+noise and zero dropout while retaining the checkpoint's 48-neighbor model:
+
+```bash
+cd /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN
+MAX_EXAMPLES=1000 SPLIT=valid scripts/evaluate_official_checkpoint.sh
+```
+
+Start a new run from the official model weights only after the replacement 2026
+dataset passes the curation and split checks:
+
+```bash
+./run_train.sh v100 \
+  --data-dir /path/to/corrected/proteinmpnn_pdb_2026 \
+  --init-checkpoint repo/vanilla_model_weights/v_48_020.pt \
+  --run-name proteinmpnn-2026-continued-v48-noise020
+```
+
+`--init-checkpoint` starts step and epoch at zero with a new optimizer.
+`--resume` is reserved for `epoch_last.pt` or another checkpoint written by this
+training loop.
 
 Full baseline from data download through training:
 
@@ -189,6 +228,11 @@ A100/full: batch_tokens=10000
 ```
 
 If V100 memory is tight, lower `--batch-tokens` to `4000`.
+
+Structure prefetch uses the multiprocessing `spawn` context because forking after
+PyTorch model initialization can deadlock native thread pools. The launcher keeps
+nested DataLoader workers at zero and starts one prefetch process by default;
+increase these only after measuring host memory and throughput.
 
 Use `scripts/benchmark_throughput.sh quick` on each new host before committing to
 a long run. The benchmark sweeps token budget plus loader/prefetch workers and

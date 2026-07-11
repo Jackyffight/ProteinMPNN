@@ -16,6 +16,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-}"
 RUN_NAME="${RUN_NAME:-}"
 DEVICES="${DEVICES:-}"
 RESUME="${PREVIOUS_CHECKPOINT:-}"
+INIT_CHECKPOINT="${INIT_CHECKPOINT:-}"
 
 NUM_EPOCHS="${NUM_EPOCHS:-}"
 NUM_EXAMPLES="${NUM_EXAMPLES:-}"
@@ -31,9 +32,9 @@ RESCUT="${RESCUT:-3.5}"
 SEED="${SEED:-42}"
 SAVE_EVERY="${SAVE_EVERY:-10}"
 RELOAD_EVERY="${RELOAD_EVERY:-2}"
-LOADER_WORKERS="${LOADER_WORKERS:-4}"
-PREFETCH_WORKERS="${PREFETCH_WORKERS:-12}"
-PREFETCH_BATCHES="${PREFETCH_BATCHES:-3}"
+LOADER_WORKERS="${LOADER_WORKERS:-0}"
+PREFETCH_WORKERS="${PREFETCH_WORKERS:-1}"
+PREFETCH_BATCHES="${PREFETCH_BATCHES:-1}"
 GRADIENT_NORM="${GRADIENT_NORM:--1.0}"
 MIXED_PRECISION="${MIXED_PRECISION:-True}"
 TF32="${TF32:-True}"
@@ -58,6 +59,8 @@ Launcher args:
                                      multi-GPU/DDP is not implemented, so passing a list uses only the first.
   --python <path>                    Python binary. Default: python.
   --resume <checkpoint>              Resume from model_weights/epoch_last.pt or another checkpoint.
+  --init-checkpoint <checkpoint>     Start a new run initialized from model weights. This does not
+                                     restore optimizer, step, or epoch state.
   --install-deps                     pip install ProteinMPNN/requirements.txt before launch.
 
 Training args:
@@ -73,9 +76,9 @@ Training args:
   --backbone-noise <float>           Backbone noise. Default: 0.2.
   --rescut <float>                   PDB resolution cutoff. Default: 3.5.
   --seed <n>                         RNG seed. Default: 42.
-  --loader-workers <n>               DataLoader workers. Default: 4.
-  --prefetch-workers <n>             ProcessPool workers for structure loading. Default: 12.
-  --prefetch-batches <n>             Prefetched train/valid batches. Default: 3.
+  --loader-workers <n>               Nested DataLoader workers. Safe default: 0.
+  --prefetch-workers <n>             Spawned ProcessPool workers. Safe default: 1.
+  --prefetch-batches <n>             Prefetched train/valid batches. Safe default: 1.
   --gradient-norm <float>            Clip norm; negative disables. Default: -1.0.
   --mixed-precision / --no-mixed-precision
   --tf32 / --no-tf32
@@ -96,6 +99,7 @@ while [ $# -gt 0 ]; do
     --devices|--cuda-visible-devices|--cuda_visible_devices) DEVICES="$2"; shift 2 ;;
     --python) PYTHON_BIN="$2"; shift 2 ;;
     --resume|--previous-checkpoint|--previous_checkpoint) RESUME="$2"; shift 2 ;;
+    --init-checkpoint|--init_checkpoint) INIT_CHECKPOINT="$2"; shift 2 ;;
     --install-deps|--install_deps) INSTALL_DEPS=true; shift ;;
     --num-epochs|--num_epochs) NUM_EPOCHS="$2"; shift 2 ;;
     --num-examples|--num_examples) NUM_EXAMPLES="$2"; shift 2 ;;
@@ -214,9 +218,30 @@ if [ "$DATASET_FORMAT" = "tar" ]; then
     exit 1
   fi
 fi
+if [ -n "$RESUME" ] && [ -n "$INIT_CHECKPOINT" ]; then
+  echo "Error: --resume and --init-checkpoint are mutually exclusive." >&2
+  exit 1
+fi
 if [ -n "$RESUME" ] && [ ! -f "$RESUME" ]; then
   echo "Error: resume checkpoint not found: $RESUME" >&2
   exit 1
+fi
+if [ -n "$RESUME" ]; then
+  RESUME="$(realpath "$RESUME")"
+fi
+if [ -n "$INIT_CHECKPOINT" ] && [ ! -f "$INIT_CHECKPOINT" ]; then
+  echo "Error: initialization checkpoint not found: $INIT_CHECKPOINT" >&2
+  exit 1
+fi
+if [ -n "$INIT_CHECKPOINT" ]; then
+  INIT_CHECKPOINT="$(realpath "$INIT_CHECKPOINT")"
+fi
+
+checkpoint_args=()
+if [ -n "$RESUME" ]; then
+  checkpoint_args=(--previous_checkpoint "$RESUME")
+elif [ -n "$INIT_CHECKPOINT" ]; then
+  checkpoint_args=(--init_checkpoint "$INIT_CHECKPOINT")
 fi
 
 if [ ! -x "$PYTHON_BIN" ]; then
@@ -253,6 +278,7 @@ echo "dataset_format: $DATASET_FORMAT"
 echo "output_dir: $OUTPUT_DIR"
 echo "devices: ${CUDA_VISIBLE_DEVICES:-unset}"
 echo "resume: ${RESUME:-none}"
+echo "init_checkpoint: ${INIT_CHECKPOINT:-none}"
 echo "epochs: $NUM_EPOCHS"
 echo "num_examples_per_epoch: $NUM_EXAMPLES"
 echo "batch_tokens: $BATCH_TOKENS"
@@ -272,7 +298,7 @@ exec "$PYTHON_BIN" training.py \
   --path_for_training_data "$DATA_DIR" \
   --dataset_format "$DATASET_FORMAT" \
   --path_for_outputs "$OUTPUT_DIR" \
-  --previous_checkpoint "$RESUME" \
+  "${checkpoint_args[@]}" \
   --num_epochs "$NUM_EPOCHS" \
   --save_model_every_n_epochs "$SAVE_EVERY" \
   --reload_data_every_n_epochs "$RELOAD_EVERY" \

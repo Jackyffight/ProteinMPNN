@@ -166,20 +166,20 @@ PY
 set -e
 
 if [ "$MODE" = "smoke" ]; then
-  run_case "sample_b1000_lw0_pw4" "smoke" "$SAMPLE_DATA_DIR" "1000" "0" "4"
-  run_case "sample_b1000_lw4_pw4" "smoke" "$SAMPLE_DATA_DIR" "1000" "4" "4"
+  run_case "sample_b1000_lw0_pw1" "smoke" "$SAMPLE_DATA_DIR" "1000" "0" "1"
+  run_case "sample_b1000_lw0_pw2" "smoke" "$SAMPLE_DATA_DIR" "1000" "0" "2"
 else
-  run_case "v100_b4000_lw4_pw8" "v100" "$FULL_DATA_DIR" "4000" "4" "8"
-  run_case "v100_b6000_lw4_pw8" "v100" "$FULL_DATA_DIR" "6000" "4" "8"
-  run_case "v100_b8000_lw4_pw8" "v100" "$FULL_DATA_DIR" "8000" "4" "8"
-  run_case "a100_b10000_lw4_pw12" "a100" "$FULL_DATA_DIR" "10000" "4" "12"
-  run_case "a100_b10000_lw8_pw16" "a100" "$FULL_DATA_DIR" "10000" "8" "16"
+  run_case "v100_b4000_lw0_pw1" "v100" "$FULL_DATA_DIR" "4000" "0" "1"
+  run_case "v100_b6000_lw0_pw1" "v100" "$FULL_DATA_DIR" "6000" "0" "1"
+  run_case "v100_b8000_lw0_pw2" "v100" "$FULL_DATA_DIR" "8000" "0" "2"
+  run_case "a100_b10000_lw0_pw2" "a100" "$FULL_DATA_DIR" "10000" "0" "2"
+  run_case "a100_b10000_lw0_pw4" "a100" "$FULL_DATA_DIR" "10000" "0" "4"
 fi
 
 if [ "$MODE" = "full" ]; then
-  run_case "a100_b12000_lw4_pw12" "a100" "$FULL_DATA_DIR" "12000" "4" "12"
-  run_case "a100_b16000_lw4_pw12" "a100" "$FULL_DATA_DIR" "16000" "4" "12"
-  run_case "v100_b6000_lw0_pw8" "v100" "$FULL_DATA_DIR" "6000" "0" "8"
+  run_case "a100_b12000_lw0_pw2" "a100" "$FULL_DATA_DIR" "12000" "0" "2"
+  run_case "a100_b16000_lw0_pw4" "a100" "$FULL_DATA_DIR" "16000" "0" "4"
+  run_case "v100_b6000_lw1_pw1" "v100" "$FULL_DATA_DIR" "6000" "1" "1"
 fi
 
 echo ""
