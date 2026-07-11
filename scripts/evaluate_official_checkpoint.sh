@@ -7,7 +7,8 @@ if [ -f "$ROOT/scripts/env_nas.sh" ]; then
 fi
 
 PYTHON_BIN="${PROTEINMPNN_PYTHON:-${PYTHON_BIN:-python}}"
-CHECKPOINT="${CHECKPOINT:-$ROOT/repo/vanilla_model_weights/v_48_020.pt}"
+DEFAULT_CHECKPOINT="$ROOT/repo/vanilla_model_weights/v_48_020.pt"
+CHECKPOINT="${CHECKPOINT:-$DEFAULT_CHECKPOINT}"
 MAX_EXAMPLES="${MAX_EXAMPLES:-1000}"
 SPLIT="${SPLIT:-valid}"
 OUTPUT="${OUTPUT:-$ROOT/runs/baselines/official-v48-020-${SPLIT}.json}"
@@ -25,6 +26,10 @@ fi
 LOCAL_DEPS="$(cd "$ROOT/.." && pwd)/.pdbbuild_deps"
 if [ -d "$LOCAL_DEPS" ]; then
   export PYTHONPATH="$LOCAL_DEPS${PYTHONPATH:+:$PYTHONPATH}"
+fi
+
+if [ "$CHECKPOINT" = "$DEFAULT_CHECKPOINT" ]; then
+  "$ROOT/scripts/ensure_official_checkpoint.sh" "$CHECKPOINT"
 fi
 
 exec "$PYTHON_BIN" "$ROOT/repo/training/evaluate_checkpoint.py" \

@@ -56,7 +56,9 @@ scripts/run_2026_v1_pilot_a100.sh
 
 The pilot script uses the pinned GPU-server paths from `env_nas.sh`, validates
 the dataset manifest and validation result, and refuses multi-GPU device lists or
-an existing output directory.
+an existing output directory. It verifies the ignored official `v_48_020.pt`
+file by size and SHA256 before training, downloading a clean copy from the
+upstream ProteinMPNN repository when the file is absent or invalid.
 
 Current unmeasured presets mirror the mRNABERT launcher style: use `v100`
 for conservative token budgets and `a100` for larger token budgets. Run the

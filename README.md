@@ -135,8 +135,10 @@ scripts/run_2026_v1_pilot_a100.sh
 ```
 
 The script checks the pinned v1 dataset, validation result, checkpoint, selected
-GPU, and output path before delegating to `run_train.sh`. `--init-checkpoint`
-starts step and epoch at zero with a new optimizer.
+GPU, and output path before delegating to `run_train.sh`. The official checkpoint
+is checksum-verified and downloaded from the upstream ProteinMPNN repository when
+it is absent or invalid. `--init-checkpoint` starts step and epoch at zero with a
+new optimizer.
 `--resume` is reserved for `epoch_last.pt` or another checkpoint written by this
 training loop.
 

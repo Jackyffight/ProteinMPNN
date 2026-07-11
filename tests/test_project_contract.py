@@ -106,6 +106,9 @@ class LauncherContractTest(unittest.TestCase):
     def test_a100_v1_pilot_script_is_guarded_and_dry_runnable(self):
         script_path = ROOT / "scripts/run_2026_v1_pilot_a100.sh"
         script = script_path.read_text(encoding="utf-8")
+        checkpoint_script = (ROOT / "scripts/ensure_official_checkpoint.sh").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("PROTEINMPNN_V1_DATA_DIR", script)
         self.assertIn("proteinmpnn.tar_shard.v2", script)
@@ -113,6 +116,14 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("do not pass 0,1,2,3", script)
         self.assertIn("--init-checkpoint", script)
         self.assertIn("--dry-run", script)
+        self.assertIn("ensure_official_checkpoint.sh", script)
+        self.assertIn("dauparas/ProteinMPNN", checkpoint_script)
+        self.assertIn("8907e6671bfbfc92303b5f79c4b5e6ce47cdef57", checkpoint_script)
+        self.assertIn("6681301", checkpoint_script)
+        self.assertIn(
+            "c9cb4a671d79604111231f8dbfc7c590e06f1197453b7a6854ac6661a642f5bd",
+            checkpoint_script,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

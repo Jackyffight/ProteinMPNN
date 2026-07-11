@@ -8,7 +8,8 @@ source "$SCRIPT_DIR/env_nas.sh"
 PYTHON_BIN="${PROTEINMPNN_PYTHON:-${PYTHON_BIN:-python}}"
 DEVICES="${DEVICES:-0}"
 DATA_DIR="${DATA_DIR:-$PROTEINMPNN_V1_DATA_DIR}"
-INIT_CHECKPOINT="${INIT_CHECKPOINT:-$REPO_ROOT/repo/vanilla_model_weights/v_48_020.pt}"
+DEFAULT_INIT_CHECKPOINT="$REPO_ROOT/repo/vanilla_model_weights/v_48_020.pt"
+INIT_CHECKPOINT="${INIT_CHECKPOINT:-$DEFAULT_INIT_CHECKPOINT}"
 RUN_NAME="${RUN_NAME:-proteinmpnn-2026-v1-pilot-v48-$(date +%Y%m%d%H%M%S)}"
 OUTPUT_DIR="${OUTPUT_DIR:-$PROTEINMPNN_OUTPUT_ROOT/$RUN_NAME}"
 NUM_EPOCHS="${NUM_EPOCHS:-1}"
@@ -62,6 +63,9 @@ done
 if [ ! -d "$DATA_DIR/shards" ] || ! find "$DATA_DIR/shards" -type f -name '*.tar' -print -quit | grep -q .; then
   echo "Error: no tar shards found under: $DATA_DIR/shards" >&2
   exit 1
+fi
+if [ "$INIT_CHECKPOINT" = "$DEFAULT_INIT_CHECKPOINT" ]; then
+  "$SCRIPT_DIR/ensure_official_checkpoint.sh" "$INIT_CHECKPOINT"
 fi
 if [ ! -s "$INIT_CHECKPOINT" ]; then
   echo "Error: initialization checkpoint not found: $INIT_CHECKPOINT" >&2
