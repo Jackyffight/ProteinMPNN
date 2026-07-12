@@ -72,7 +72,11 @@ the same deterministic held-out v1 test sample:
 
 ```bash
 scripts/evaluate_2026_v1_stage1.sh
+scripts/evaluate_2026_v1_stage1_multiseed.sh
 ```
+
+Use the multi-seed result as the promotion gate; the single-seed command is a
+quick initial check.
 
 Current unmeasured presets mirror the mRNABERT launcher style: use `v100`
 for conservative token budgets and `a100` for larger token budgets. Run the

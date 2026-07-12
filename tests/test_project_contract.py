@@ -107,9 +107,11 @@ class LauncherContractTest(unittest.TestCase):
         script_path = ROOT / "scripts/run_2026_v1_pilot_a100.sh"
         stage1_path = ROOT / "scripts/run_2026_v1_stage1_a100.sh"
         evaluation_path = ROOT / "scripts/evaluate_2026_v1_stage1.sh"
+        multiseed_path = ROOT / "scripts/evaluate_2026_v1_stage1_multiseed.sh"
         script = script_path.read_text(encoding="utf-8")
         stage1 = stage1_path.read_text(encoding="utf-8")
         evaluation = evaluation_path.read_text(encoding="utf-8")
+        multiseed = multiseed_path.read_text(encoding="utf-8")
         checkpoint_script = (ROOT / "scripts/ensure_official_checkpoint.sh").read_text(
             encoding="utf-8"
         )
@@ -131,6 +133,9 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn('SPLIT="${SPLIT:-test}"', evaluation)
         self.assertIn("evaluated_structure_ids_sha256", evaluation)
         self.assertIn("status: {status}", evaluation)
+        self.assertIn("11 23 42 67 101", multiseed)
+        self.assertIn("evaluated_structure_ids_sha256", multiseed)
+        self.assertIn("consistently_improved", multiseed)
         self.assertIn("dauparas/ProteinMPNN", checkpoint_script)
         self.assertIn("8907e6671bfbfc92303b5f79c4b5e6ce47cdef57", checkpoint_script)
         self.assertIn("6681301", checkpoint_script)

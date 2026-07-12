@@ -159,7 +159,12 @@ held-out v1 test structures before selecting it for a later stage:
 
 ```bash
 scripts/evaluate_2026_v1_stage1.sh
+scripts/evaluate_2026_v1_stage1_multiseed.sh
 ```
+
+The multi-seed comparison is the promotion gate. It repeats the paired held-out
+test evaluation with seeds `11 23 42 67 101` and reports the mean delta plus the
+number of seeds on which the stage-1 checkpoint wins.
 
 Full baseline from data download through training:
 
