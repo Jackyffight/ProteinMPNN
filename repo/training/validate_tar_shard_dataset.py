@@ -16,6 +16,13 @@ from tar_shard_utils import TarShardStore
 
 ALPHABET = set("ACDEFGHIKLMNPQRSTVWYX")
 LOCATION_FIELDS = ("shard", "member", "offset", "size")
+STANDARD_PAYLOAD_SCHEMA = "structure_with_target_chain_ids"
+SPATIAL_CROP_PAYLOAD_SCHEMA = "structure_with_target_chain_ids_spatial_crop"
+SPATIAL_CROP_POLICY = "full_target_nearest_chain_windows_v1"
+RECORD_GRANULARITY_BY_SCHEMA = {
+    STANDARD_PAYLOAD_SCHEMA: "pdb_canonical_assembly",
+    SPATIAL_CROP_PAYLOAD_SCHEMA: "pdb_canonical_assembly_spatial_crop",
+}
 
 
 def parse_args():
@@ -172,7 +179,155 @@ def validate_indexes(dataset_dir, manifest, rows, chain_index_rows, record_index
     return row_by_chain, chain_index_by_id
 
 
-def validate_payload(chain_id, row, payload, build_filters):
+def validate_spatial_crop(chain_id, target_chain_id, chains, meta, build_manifest):
+    filters = build_manifest["filters"]
+    crop_meta = meta.get("crop")
+    require(isinstance(crop_meta, dict), f"missing crop metadata: {chain_id}")
+    require(
+        build_manifest.get("crop_policy") == SPATIAL_CROP_POLICY,
+        "unexpected build crop policy",
+    )
+    require(
+        crop_meta.get("policy") == SPATIAL_CROP_POLICY,
+        f"unexpected payload crop policy: {chain_id}",
+    )
+    require(crop_meta.get("target_was_cropped") is False, f"target was cropped: {chain_id}")
+    require(
+        crop_meta.get("target_source_chain_id")
+        == chains[target_chain_id]["source_chain_id"],
+        f"crop target source mismatch: {chain_id}",
+    )
+
+    original_length = int(crop_meta["original_context_length"])
+    original_chains = int(crop_meta["original_context_chains"])
+    retained_length = sum(len(chain["seq"]) for chain in chains.values())
+    retained_chains = len(chains)
+    max_context_length = int(filters["max_context_length"])
+    max_chains = int(filters["max_chains"])
+    require(
+        int(crop_meta["max_context_length"]) == max_context_length,
+        f"crop budget mismatch: {chain_id}",
+    )
+    require(
+        original_length > max_context_length or original_chains > max_chains,
+        f"source was not oversized: {chain_id}",
+    )
+    require(original_length >= retained_length, f"crop length grew: {chain_id}")
+    require(original_chains >= retained_chains, f"crop chain count grew: {chain_id}")
+    require(
+        retained_length == int(crop_meta["retained_context_length"]),
+        f"retained crop length mismatch: {chain_id}",
+    )
+    require(
+        retained_chains == int(crop_meta["retained_context_chains"]),
+        f"retained crop chain count mismatch: {chain_id}",
+    )
+    require(
+        original_chains - retained_chains == int(crop_meta["dropped_context_chains"]),
+        f"dropped crop chain count mismatch: {chain_id}",
+    )
+
+    ranked_context = []
+    target_chain = chains[target_chain_id]
+    for context_chain_id, chain in chains.items():
+        crop = chain.get("crop")
+        require(isinstance(crop, dict), f"missing chain crop metadata: {chain_id}/{context_chain_id}")
+        length = len(chain["seq"])
+        source_length = int(crop["source_sequence_length"])
+        source_start = int(crop["source_residue_start"])
+        source_end = int(crop["source_residue_end"])
+        source_resolved = int(crop["source_resolved_residue_count"])
+        source_coverage = float(crop["source_backbone_coverage"])
+        require(0 <= source_resolved <= source_length, f"bad source resolved count: {chain_id}/{context_chain_id}")
+        require(0.0 <= source_coverage <= 1.0, f"bad source coverage: {chain_id}/{context_chain_id}")
+        require(
+            math.isclose(
+                source_resolved / float(source_length),
+                source_coverage,
+                abs_tol=1e-9,
+            ),
+            f"source coverage mismatch: {chain_id}/{context_chain_id}",
+        )
+        require(
+            0 <= source_start < source_end <= source_length,
+            f"bad source crop interval: {chain_id}/{context_chain_id}",
+        )
+        require(
+            source_end - source_start == length,
+            f"source crop length mismatch: {chain_id}/{context_chain_id}",
+        )
+        require(
+            source_resolved >= int(chain["resolved_residue_count"]),
+            f"crop gained resolved residues: {chain_id}/{context_chain_id}",
+        )
+
+        if context_chain_id == target_chain_id:
+            require(crop.get("kind") == "full_target", f"target crop kind mismatch: {chain_id}")
+            require(int(crop.get("spatial_rank", -1)) == 0, f"target crop rank mismatch: {chain_id}")
+            require(source_start == 0 and source_end == source_length, f"target is not complete: {chain_id}")
+            require(source_length == length, f"target source length mismatch: {chain_id}")
+            require(source_resolved == int(chain["resolved_residue_count"]), f"target resolved count changed: {chain_id}")
+            require(
+                math.isclose(source_coverage, float(chain["backbone_coverage"]), abs_tol=1e-9),
+                f"target source coverage changed: {chain_id}",
+            )
+            require(crop.get("nearest_target_residue") is None, f"target has nearest target index: {chain_id}")
+            require(crop.get("nearest_source_residue") is None, f"target has nearest source index: {chain_id}")
+            require(float(crop["distance_to_target"]) == 0.0, f"target crop distance changed: {chain_id}")
+            continue
+
+        kind = crop.get("kind")
+        require(kind in {"full_context", "context_window"}, f"bad crop kind: {chain_id}/{context_chain_id}")
+        rank = int(crop["spatial_rank"])
+        distance = float(crop["distance_to_target"])
+        target_index = int(crop["nearest_target_residue"])
+        source_index = int(crop["nearest_source_residue"])
+        require(rank > 0, f"bad spatial rank: {chain_id}/{context_chain_id}")
+        require(math.isfinite(distance) and distance >= 0.0, f"bad crop distance: {chain_id}/{context_chain_id}")
+        require(0 <= target_index < len(target_chain["seq"]), f"bad nearest target index: {chain_id}/{context_chain_id}")
+        require(0 <= source_index < source_length, f"bad nearest source index: {chain_id}/{context_chain_id}")
+        require(source_start <= source_index < source_end, f"nearest residue outside crop: {chain_id}/{context_chain_id}")
+        if kind == "full_context":
+            require(source_start == 0 and source_end == source_length, f"full context was cropped: {chain_id}/{context_chain_id}")
+            require(
+                source_resolved == int(chain["resolved_residue_count"]),
+                f"full context resolved count changed: {chain_id}/{context_chain_id}",
+            )
+            require(
+                math.isclose(
+                    source_coverage,
+                    float(chain["backbone_coverage"]),
+                    abs_tol=1e-9,
+                ),
+                f"full context coverage changed: {chain_id}/{context_chain_id}",
+            )
+        else:
+            require(length < source_length, f"context window is not shorter: {chain_id}/{context_chain_id}")
+
+        retained_source_index = source_index - source_start
+        target_ca = target_chain["xyz"][target_index, 1]
+        context_ca = chain["xyz"][retained_source_index, 1]
+        require(torch.isfinite(target_ca).all(), f"nearest target CA missing: {chain_id}/{context_chain_id}")
+        require(torch.isfinite(context_ca).all(), f"nearest context CA missing: {chain_id}/{context_chain_id}")
+        observed_distance = float(torch.linalg.vector_norm(target_ca - context_ca).item())
+        require(
+            math.isclose(observed_distance, distance, rel_tol=1e-5, abs_tol=1e-5),
+            f"crop distance mismatch: {chain_id}/{context_chain_id}",
+        )
+        ranked_context.append((rank, distance, chain["source_chain_id"]))
+
+    ranks = [rank for rank, _, _ in ranked_context]
+    require(len(ranks) == len(set(ranks)), f"duplicate spatial ranks: {chain_id}")
+    by_rank = sorted(ranked_context)
+    require(
+        [(distance, source_id) for _, distance, source_id in by_rank]
+        == sorted((distance, source_id) for _, distance, source_id in by_rank),
+        f"spatial crop order mismatch: {chain_id}",
+    )
+
+
+def validate_payload(chain_id, row, payload, build_manifest, payload_schema):
+    build_filters = build_manifest["filters"]
     require(payload.get("format") == "proteinmpnn.tar_shard.v2", "payload is not v2")
     entry_id = chain_id.split("_", 1)[0]
     require(payload["entry_id"] == entry_id, f"entry mismatch: {chain_id}")
@@ -263,16 +418,137 @@ def validate_payload(chain_id, row, payload, build_filters):
     require(bool(((tm >= 0.0) & (tm <= 1.0)).all()), f"tm values outside [0, 1]: {chain_id}")
     target_index = meta["chains"].index(target_chain)
     require(float(tm[target_index, target_index, 1]) == 1.0, f"target identity mismatch: {chain_id}")
-    expected_target = min(
-        chains,
-        key=lambda context_chain_id: (
-            -int(chains[context_chain_id]["resolved_residue_count"]),
-            -float(chains[context_chain_id]["backbone_coverage"]),
-            chains[context_chain_id]["source_chain_id"],
-        ),
-    )
+    if payload_schema == SPATIAL_CROP_PAYLOAD_SCHEMA:
+        validate_spatial_crop(
+            chain_id,
+            target_chain,
+            chains,
+            meta,
+            build_manifest,
+        )
+        expected_target = min(
+            chains,
+            key=lambda context_chain_id: (
+                -int(chains[context_chain_id]["crop"]["source_resolved_residue_count"]),
+                -float(chains[context_chain_id]["crop"]["source_backbone_coverage"]),
+                chains[context_chain_id]["source_chain_id"],
+            ),
+        )
+    else:
+        expected_target = min(
+            chains,
+            key=lambda context_chain_id: (
+                -int(chains[context_chain_id]["resolved_residue_count"]),
+                -float(chains[context_chain_id]["backbone_coverage"]),
+                chains[context_chain_id]["source_chain_id"],
+            ),
+        )
     require(target_chain == expected_target, f"target selection mismatch: {chain_id}")
     return context_length, len(chains), retained_missing_positions
+
+
+def validate_reference_split_inheritance(
+    dataset_dir,
+    build_manifest,
+    rows,
+    valid_clusters,
+    test_clusters,
+):
+    recorded_reference = Path(build_manifest["reference_dataset"]).expanduser()
+    candidates = (
+        recorded_reference,
+        dataset_dir.parent / recorded_reference.name,
+    )
+    reference_dataset = next(
+        (candidate.resolve() for candidate in candidates if candidate.is_dir()),
+        recorded_reference.resolve(),
+    )
+    expected_hashes = build_manifest.get("reference_files_sha256", {})
+    required_files = (
+        "manifest.json",
+        "validation.json",
+        "list.csv",
+        "valid_clusters.txt",
+        "test_clusters.txt",
+    )
+    require(
+        set(expected_hashes) == set(required_files),
+        "missing reference dataset checksums",
+    )
+    for filename in required_files:
+        path = reference_dataset / filename
+        require(path.is_file(), f"missing reference dataset file: {path}")
+        require(
+            sha256_file(path) == expected_hashes[filename],
+            f"reference dataset checksum mismatch: {filename}",
+        )
+
+    with (reference_dataset / "list.csv").open(newline="", encoding="utf-8") as handle:
+        reference_rows = list(csv.DictReader(handle))
+    reference_valid = read_cluster_ids(reference_dataset / "valid_clusters.txt")
+    reference_test = read_cluster_ids(reference_dataset / "test_clusters.txt")
+    require(reference_rows, "reference dataset contains no targets")
+    require(not reference_valid.intersection(reference_test), "reference valid/test overlap")
+
+    reference_cluster_splits = defaultdict(set)
+    reference_sequence_splits = defaultdict(set)
+    reference_pdb_ids = set()
+    for row in reference_rows:
+        split = split_name(int(row["CLUSTER"]), reference_valid, reference_test)
+        reference_cluster_splits[int(row["CLUSTER"])].add(split)
+        reference_sequence_splits[row["SEQUENCE"]].add(split)
+        reference_pdb_ids.add(row["CHAINID"][:4].lower())
+    require(
+        all(len(splits) == 1 for splits in reference_cluster_splits.values()),
+        "reference clusters cross splits",
+    )
+    require(
+        all(len(splits) == 1 for splits in reference_sequence_splits.values()),
+        "reference exact sequences cross splits",
+    )
+    cluster_split = {
+        cluster: next(iter(splits))
+        for cluster, splits in reference_cluster_splits.items()
+    }
+    sequence_split = {
+        sequence: next(iter(splits))
+        for sequence, splits in reference_sequence_splits.items()
+    }
+
+    stage_rows_by_cluster = defaultdict(list)
+    for row in rows:
+        stage_rows_by_cluster[int(row["CLUSTER"])].append(row)
+    inherited_clusters = 0
+    exact_sequence_overlaps = 0
+    for cluster, cluster_rows in stage_rows_by_cluster.items():
+        anchors = set()
+        if cluster in cluster_split:
+            anchors.add(cluster_split[cluster])
+        for row in cluster_rows:
+            inherited = sequence_split.get(row["SEQUENCE"])
+            if inherited is not None:
+                anchors.add(inherited)
+                exact_sequence_overlaps += 1
+        require(len(anchors) <= 1, f"conflicting reference split anchors: cluster {cluster}")
+        expected_split = next(iter(anchors)) if anchors else "train"
+        actual_split = split_name(cluster, valid_clusters, test_clusters)
+        require(
+            actual_split == expected_split,
+            f"reference split inheritance mismatch: cluster {cluster}",
+        )
+        inherited_clusters += bool(anchors)
+
+    stage_pdb_ids = {row["CHAINID"][:4].lower() for row in rows}
+    require(
+        not stage_pdb_ids.intersection(reference_pdb_ids),
+        "stage and reference datasets contain overlapping PDB IDs",
+    )
+    return {
+        "reference_records": len(reference_rows),
+        "reference_anchored_clusters": inherited_clusters,
+        "reference_exact_sequence_overlaps": exact_sequence_overlaps,
+        "reference_pdb_overlaps": 0,
+    }
 
 
 def main():
@@ -297,15 +573,16 @@ def main():
         (dataset_dir / "build_manifest.json").read_text(encoding="utf-8")
     )
     require(manifest.get("format") == "proteinmpnn.tar_shard.v2", "dataset is not v2")
+    payload_schema = manifest.get("payload_schema")
     require(
-        manifest.get("payload_schema") == "structure_with_target_chain_ids",
+        payload_schema in RECORD_GRANULARITY_BY_SCHEMA,
         "unexpected payload schema",
     )
     require(manifest.get("build") == build_manifest, "embedded build manifest mismatch")
     require(build_manifest.get("cluster_map_entries", 0) > 0, "missing homology clusters")
     require(build_manifest.get("entry_metadata_records", 0) > 0, "missing entry metadata")
     require(
-        manifest.get("record_granularity") == "pdb_canonical_assembly",
+        manifest.get("record_granularity") == RECORD_GRANULARITY_BY_SCHEMA[payload_schema],
         "unexpected record granularity",
     )
     require(
@@ -341,6 +618,19 @@ def main():
     pdb_split_leaks = sum(len(splits) > 1 for splits in pdb_splits.values())
     require(exact_sequence_split_leaks == 0, "exact sequences cross data splits")
     require(pdb_split_leaks == 0, "PDB IDs cross data splits")
+    reference_split_stats = {}
+    if payload_schema == SPATIAL_CROP_PAYLOAD_SCHEMA:
+        require(
+            manifest.get("crop_policy") == SPATIAL_CROP_POLICY,
+            "unexpected manifest crop policy",
+        )
+        reference_split_stats = validate_reference_split_inheritance(
+            dataset_dir,
+            build_manifest,
+            rows,
+            valid_clusters,
+            test_clusters,
+        )
 
     store = TarShardStore(dataset_dir)
     require(len(store.index_by_chain) == len(rows), "TarShardStore index count mismatch")
@@ -352,7 +642,11 @@ def main():
         chain_id = row["CHAINID"]
         payload = store.load_payload_for_chain(chain_id)
         context_length, chain_count, missing_positions = validate_payload(
-            chain_id, row_by_chain[chain_id], payload, build_manifest["filters"]
+            chain_id,
+            row_by_chain[chain_id],
+            payload,
+            build_manifest,
+            payload_schema,
         )
         context_chain_count += chain_count
         retained_missing_positions += missing_positions
@@ -367,6 +661,7 @@ def main():
     result = {
         "schema": "proteinmpnn.tar_shard_validation.v2",
         "dataset_dir": str(dataset_dir),
+        "payload_schema": payload_schema,
         "records": len(rows),
         "payloads_checked": len(payload_rows),
         "shards_checked": shard_count,
@@ -375,6 +670,7 @@ def main():
         "retained_missing_positions": retained_missing_positions,
         "exact_sequence_split_leaks": exact_sequence_split_leaks,
         "pdb_split_leaks": pdb_split_leaks,
+        **reference_split_stats,
         "status": "ok",
     }
     rendered = json.dumps(result, indent=2, sort_keys=True)

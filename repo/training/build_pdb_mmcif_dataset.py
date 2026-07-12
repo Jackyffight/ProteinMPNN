@@ -60,6 +60,7 @@ CHAIN_IDS = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 CLUSTER_MAP: dict[tuple[str, str], int] = {}
 ENTRY_METADATA: dict[str, dict] = {}
 TAR_SHARD_FORMAT = "proteinmpnn.tar_shard.v2"
+SPATIAL_CROP_POLICY = "full_target_nearest_chain_windows_v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -498,6 +499,177 @@ def total_context_length(chains: dict) -> int:
     return sum(len(chain["seq"]) for chain in chains.values())
 
 
+def nearest_ca_pair(target_chain: dict, context_chain: dict, chunk_size: int = 256):
+    """Return the deterministic nearest resolved CA pair without a full distance matrix."""
+    target_valid = target_chain["mask"][:, 1] & torch.isfinite(
+        target_chain["xyz"][:, 1, :]
+    ).all(dim=1)
+    context_valid = context_chain["mask"][:, 1] & torch.isfinite(
+        context_chain["xyz"][:, 1, :]
+    ).all(dim=1)
+    target_indices = torch.nonzero(target_valid, as_tuple=False).flatten()
+    context_indices = torch.nonzero(context_valid, as_tuple=False).flatten()
+    if target_indices.numel() == 0 or context_indices.numel() == 0:
+        return float("inf"), None, None
+
+    target_coordinates = target_chain["xyz"][target_indices, 1, :]
+    context_coordinates = context_chain["xyz"][context_indices, 1, :]
+    best = (float("inf"), None, None)
+    for start in range(0, target_coordinates.shape[0], chunk_size):
+        target_chunk = target_coordinates[start : start + chunk_size]
+        distances = torch.cdist(
+            target_chunk,
+            context_coordinates,
+            compute_mode="donot_use_mm_for_euclid_dist",
+        )
+        flat_index = int(torch.argmin(distances).item())
+        context_count = context_coordinates.shape[0]
+        target_offset, context_offset = divmod(flat_index, context_count)
+        distance = float(
+            torch.linalg.vector_norm(
+                target_chunk[target_offset] - context_coordinates[context_offset]
+            ).item()
+        )
+        target_index = int(target_indices[start + target_offset].item())
+        context_index = int(context_indices[context_offset].item())
+        candidate = (distance, target_index, context_index)
+        if candidate < best:
+            best = candidate
+    return best
+
+
+def centered_window(length: int, size: int, center: int) -> tuple[int, int]:
+    if not 0 < size <= length:
+        raise ValueError(f"invalid crop window size={size} length={length}")
+    start = max(0, min(center - size // 2, length - size))
+    return start, start + size
+
+
+def crop_chain_payload(chain: dict, start: int, end: int, crop: dict) -> dict:
+    source_length = len(chain["seq"])
+    if not 0 <= start < end <= source_length:
+        raise ValueError(f"invalid chain crop [{start}, {end}) for length {source_length}")
+    cropped = dict(chain)
+    cropped["seq"] = chain["seq"][start:end]
+    for tensor_name in ("xyz", "mask", "bfac", "occ"):
+        cropped[tensor_name] = chain[tensor_name][start:end].clone()
+    complete_backbone = cropped["mask"][:, :4].all(dim=1)
+    resolved_count = int(complete_backbone.sum().item())
+    cropped["resolved_residue_count"] = resolved_count
+    cropped["backbone_coverage"] = resolved_count / float(end - start)
+    cropped["crop"] = {
+        **crop,
+        "source_sequence_length": source_length,
+        "source_resolved_residue_count": int(chain["resolved_residue_count"]),
+        "source_backbone_coverage": float(chain["backbone_coverage"]),
+        "source_residue_start": start,
+        "source_residue_end": end,
+    }
+    return cropped
+
+
+def crop_spatial_context(
+    chains: dict,
+    max_context_length: int,
+    max_chains: int,
+    min_context_crop_length: int,
+    min_resolved_residues: int = 0,
+    min_backbone_coverage: float = 0.0,
+) -> dict:
+    """Keep a complete target plus nearest full chains/contiguous chain windows."""
+    if max_context_length <= 0:
+        raise ValueError("spatial cropping requires a positive max_context_length")
+    target_source_chain_id = select_target_chain(chains)
+    target_chain = chains[target_source_chain_id]
+    target_length = len(target_chain["seq"])
+    original_context_length = total_context_length(chains)
+    if target_length > max_context_length:
+        return {
+            "status": "skipped",
+            "reason": "target_too_long_for_complete_crop",
+            "target_source_chain_id": target_source_chain_id,
+            "target_length": target_length,
+            "context_chains": len(chains),
+            "context_length": original_context_length,
+        }
+
+    target_crop = {
+        "kind": "full_target",
+        "spatial_rank": 0,
+        "distance_to_target": 0.0,
+        "nearest_target_residue": None,
+        "nearest_source_residue": None,
+    }
+    cropped_chains = {
+        target_source_chain_id: crop_chain_payload(
+            target_chain, 0, target_length, target_crop
+        )
+    }
+    remaining = max_context_length - target_length
+    ranked_context = []
+    for source_chain_id, chain in chains.items():
+        if source_chain_id == target_source_chain_id:
+            continue
+        distance, target_index, context_index = nearest_ca_pair(target_chain, chain)
+        ranked_context.append(
+            (distance, source_chain_id, target_index, context_index, chain)
+        )
+    ranked_context.sort(key=lambda item: (item[0], item[1]))
+
+    for spatial_rank, (
+        distance,
+        source_chain_id,
+        target_index,
+        context_index,
+        chain,
+    ) in enumerate(ranked_context, start=1):
+        if remaining < min_context_crop_length or len(cropped_chains) >= max_chains:
+            break
+        chain_length = len(chain["seq"])
+        retained_length = min(chain_length, remaining)
+        if retained_length < min_context_crop_length or context_index is None:
+            continue
+        if retained_length == chain_length:
+            start, end = 0, chain_length
+            kind = "full_context"
+        else:
+            start, end = centered_window(chain_length, retained_length, context_index)
+            kind = "context_window"
+        crop = {
+            "kind": kind,
+            "spatial_rank": spatial_rank,
+            "distance_to_target": distance,
+            "nearest_target_residue": target_index,
+            "nearest_source_residue": context_index,
+        }
+        cropped_chain = crop_chain_payload(chain, start, end, crop)
+        if (
+            cropped_chain["resolved_residue_count"] < min_resolved_residues
+            or cropped_chain["backbone_coverage"] < min_backbone_coverage
+        ):
+            continue
+        cropped_chains[source_chain_id] = cropped_chain
+        remaining -= end - start
+
+    crop_metadata = {
+        "policy": SPATIAL_CROP_POLICY,
+        "target_source_chain_id": target_source_chain_id,
+        "target_was_cropped": False,
+        "max_context_length": max_context_length,
+        "original_context_length": original_context_length,
+        "original_context_chains": len(chains),
+        "retained_context_length": total_context_length(cropped_chains),
+        "retained_context_chains": len(cropped_chains),
+        "dropped_context_chains": len(chains) - len(cropped_chains),
+    }
+    return {
+        "status": "ok",
+        "chains": cropped_chains,
+        "target_source_chain_id": target_source_chain_id,
+        "crop": crop_metadata,
+    }
+
+
 def reconcile_exact_sequence_clusters(rows: list[dict]) -> dict:
     parent = {}
 
@@ -631,32 +803,64 @@ def parse_one(path_str: str, config: dict) -> dict:
     if not as_list(cif.get("_atom_site.label_atom_id")):
         return {"status": "skipped", "reason": "no_atoms", "path": path_str}
     chains = extract_polymer_chains(cif, config)
+    del cif
 
     if not chains:
         return {"status": "skipped", "reason": "no_valid_chains", "path": path_str}
-    if len(chains) > config["max_chains"]:
-        return {
-            "status": "skipped",
-            "reason": "too_many_chains",
-            "path": path_str,
-            "entry_id": entry_id,
-            "context_chains": len(chains),
-            "context_length": total_context_length(chains),
-        }
     context_length = total_context_length(chains)
     max_context_length = config.get("max_context_length", 0)
-    if max_context_length > 0 and context_length > max_context_length:
-        return {
-            "status": "skipped",
-            "reason": "context_too_long",
-            "path": path_str,
-            "entry_id": entry_id,
-            "context_chains": len(chains),
-            "context_length": context_length,
-            "max_context_length": max_context_length,
-        }
+    crop_metadata = None
+    if config.get("spatial_crop", False):
+        is_oversized = (
+            len(chains) > config["max_chains"]
+            or (max_context_length > 0 and context_length > max_context_length)
+        )
+        if config.get("require_oversized", False) and not is_oversized:
+            return {
+                "status": "skipped",
+                "reason": "not_oversized",
+                "path": path_str,
+                "entry_id": entry_id,
+                "context_chains": len(chains),
+                "context_length": context_length,
+            }
+        crop_result = crop_spatial_context(
+            chains,
+            max_context_length=max_context_length,
+            max_chains=config["max_chains"],
+            min_context_crop_length=config.get(
+                "min_context_crop_length", config["min_chain_length"]
+            ),
+            min_resolved_residues=config["min_resolved_residues"],
+            min_backbone_coverage=config["min_backbone_coverage"],
+        )
+        if crop_result["status"] != "ok":
+            return {**crop_result, "path": path_str, "entry_id": entry_id}
+        chains = crop_result["chains"]
+        target_source_chain_id = crop_result["target_source_chain_id"]
+        crop_metadata = crop_result["crop"]
+    else:
+        if len(chains) > config["max_chains"]:
+            return {
+                "status": "skipped",
+                "reason": "too_many_chains",
+                "path": path_str,
+                "entry_id": entry_id,
+                "context_chains": len(chains),
+                "context_length": context_length,
+            }
+        if max_context_length > 0 and context_length > max_context_length:
+            return {
+                "status": "skipped",
+                "reason": "context_too_long",
+                "path": path_str,
+                "entry_id": entry_id,
+                "context_chains": len(chains),
+                "context_length": context_length,
+                "max_context_length": max_context_length,
+            }
+        target_source_chain_id = select_target_chain(chains)
 
-    target_source_chain_id = select_target_chain(chains)
     remap = {source: CHAIN_IDS[i] for i, source in enumerate(sorted(chains.keys()))}
     write_pt = config.get("write_pt", True)
     out_dir = Path(config["out_dir"]) / "pdb" / entry_id[1:3]
@@ -683,6 +887,8 @@ def parse_one(path_str: str, config: dict) -> dict:
             "resolved_residue_count": chain["resolved_residue_count"],
             "backbone_coverage": chain["backbone_coverage"],
         }
+        if "crop" in chain:
+            chain_payload["crop"] = chain["crop"]
         chain_payloads[chain_id] = chain_payload
         if write_pt:
             torch.save(chain_payload, out_dir / f"{entry_id}_{chain_id}.pt")
@@ -742,6 +948,8 @@ def parse_one(path_str: str, config: dict) -> dict:
         "asmb_chains": [",".join(remapped_chain_ids)],
         "asmb_xform0": torch.eye(4, dtype=torch.float32).reshape(1, 4, 4),
     }
+    if crop_metadata is not None:
+        meta["crop"] = crop_metadata
     if write_pt:
         torch.save(meta, out_dir / f"{entry_id}.pt")
 
@@ -753,6 +961,8 @@ def parse_one(path_str: str, config: dict) -> dict:
         "targets": len(rows),
         "rows": rows,
     }
+    if crop_metadata is not None:
+        result["crop"] = crop_metadata
     if config.get("return_payload", False):
         payload = {
             "format": TAR_SHARD_FORMAT,

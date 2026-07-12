@@ -18,8 +18,9 @@ class MmcifDatasetV2Test(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         sys.path.insert(0, str(ROOT / "repo/training"))
-        global builder, np, torch
+        global builder, crop_builder, np, torch
         import build_pdb_mmcif_dataset as builder
+        import build_pdb_oversized_crop_tar_dataset as crop_builder
         import numpy as np
         import torch
 
@@ -104,6 +105,124 @@ class MmcifDatasetV2Test(unittest.TestCase):
     def test_context_length_counts_full_polymer_sequences(self):
         chains = {"A": {"seq": "A" * 1200}, "B": {"seq": "G" * 900}}
         self.assertEqual(builder.total_context_length(chains), 2100)
+
+    def make_chain(self, length, ca_x, resolved_count=None):
+        xyz = torch.full((length, 14, 3), float("nan"))
+        mask = torch.zeros((length, 14), dtype=torch.bool)
+        for atom_index in range(4):
+            xyz[:, atom_index, 0] = torch.as_tensor(ca_x, dtype=torch.float32)
+            xyz[:, atom_index, 1:] = 0.0
+            mask[:, atom_index] = True
+        resolved_count = length if resolved_count is None else resolved_count
+        return {
+            "seq": "A" * length,
+            "xyz": xyz,
+            "mask": mask,
+            "bfac": torch.zeros((length, 14)),
+            "occ": torch.ones((length, 14)),
+            "entity_id": "1",
+            "source_chain_id": "unused",
+            "resolved_residue_count": resolved_count,
+            "backbone_coverage": resolved_count / float(length),
+        }
+
+    def test_spatial_crop_keeps_target_and_contiguous_nearest_context_window(self):
+        target = self.make_chain(100, [0.0] * 100)
+        near = self.make_chain(80, [abs(index - 40) + 1.0 for index in range(80)])
+        far = self.make_chain(70, [100.0] * 70)
+        near["entity_id"] = "2"
+        far["entity_id"] = "3"
+        chains = {"A": target, "B": near, "C": far}
+
+        result = builder.crop_spatial_context(
+            chains,
+            max_context_length=150,
+            max_chains=62,
+            min_context_crop_length=30,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(list(result["chains"]), ["A", "B"])
+        self.assertEqual(builder.total_context_length(result["chains"]), 150)
+        context = result["chains"]["B"]
+        self.assertEqual(context["crop"]["kind"], "context_window")
+        self.assertEqual(context["crop"]["source_residue_start"], 15)
+        self.assertEqual(context["crop"]["source_residue_end"], 65)
+        self.assertEqual(context["crop"]["nearest_source_residue"], 40)
+        self.assertEqual(context["crop"]["source_sequence_length"], 80)
+        self.assertEqual(context["crop"]["source_resolved_residue_count"], 80)
+        self.assertEqual(len(context["seq"]), 50)
+        self.assertEqual(context["xyz"].untyped_storage().nbytes(), context["xyz"].numel() * 4)
+        self.assertFalse(context["xyz"].untyped_storage().data_ptr() == near["xyz"].untyped_storage().data_ptr())
+
+    def test_spatial_crop_rejects_target_longer_than_budget(self):
+        chains = {"A": self.make_chain(101, [0.0] * 101)}
+
+        result = builder.crop_spatial_context(
+            chains,
+            max_context_length=100,
+            max_chains=62,
+            min_context_crop_length=30,
+        )
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "target_too_long_for_complete_crop")
+        self.assertEqual(result["target_length"], 101)
+
+    def test_spatial_crop_skips_a_sparse_local_window(self):
+        target = self.make_chain(70, [0.0] * 70)
+        sparse = self.make_chain(100, [100.0] * 100)
+        sparse["xyz"][:] = float("nan")
+        sparse["mask"][:] = False
+        for residue in list(range(30)) + [80]:
+            sparse["xyz"][residue, :4, 0] = 100.0 if residue < 30 else 1.0
+            sparse["xyz"][residue, :4, 1:] = 0.0
+            sparse["mask"][residue, :4] = True
+        sparse["resolved_residue_count"] = 31
+        sparse["backbone_coverage"] = 0.31
+        dense = self.make_chain(30, [10.0] * 30)
+        sparse["entity_id"] = "2"
+        dense["entity_id"] = "3"
+
+        result = builder.crop_spatial_context(
+            {"A": target, "B": sparse, "C": dense},
+            max_context_length=100,
+            max_chains=62,
+            min_context_crop_length=30,
+            min_resolved_residues=30,
+            min_backbone_coverage=0.5,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(list(result["chains"]), ["A", "C"])
+        self.assertEqual(builder.total_context_length(result["chains"]), 100)
+
+    def test_oversized_split_inheritance_uses_reference_clusters_and_sequences(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reference = Path(temp_dir)
+            (reference / "list.csv").write_text(
+                "CHAINID,DEPOSITION,RESOLUTION,HASH,CLUSTER,SEQUENCE\n"
+                "1abca1_A,2025-01-01,2.0,h1,10,AAAA\n"
+                "2abca1_A,2025-01-01,2.0,h2,20,BBBB\n"
+                "3abca1_A,2025-01-01,2.0,h3,30,CCCC\n",
+                encoding="utf-8",
+            )
+            (reference / "valid_clusters.txt").write_text("20\n", encoding="utf-8")
+            (reference / "test_clusters.txt").write_text("30\n", encoding="utf-8")
+            rows = [
+                {"CHAINID": "4abca1_A", "CLUSTER": "99", "SEQUENCE": "BBBB"},
+                {"CHAINID": "5abca1_A", "CLUSTER": "40", "SEQUENCE": "DDDD"},
+                {"CHAINID": "6abca1_A", "CLUSTER": "30", "SEQUENCE": "EEEE"},
+            ]
+
+            stats = crop_builder.inherit_reference_splits(rows, reference)
+
+        self.assertEqual([row["CLUSTER"] for row in rows], ["20", "40", "30"])
+        self.assertEqual(stats["stage_valid_cluster_ids"], [20])
+        self.assertEqual(stats["stage_test_cluster_ids"], [30])
+        self.assertEqual(stats["stage_train_rows"], 1)
+        self.assertEqual(stats["stage_valid_rows"], 1)
+        self.assertEqual(stats["stage_test_rows"], 1)
 
     def test_exact_sequence_cluster_conflicts_are_unioned(self):
         rows = [

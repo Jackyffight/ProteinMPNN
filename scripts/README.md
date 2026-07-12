@@ -86,6 +86,19 @@ checkpoint paths and SHA256 values, and the complete 426/461 record populations.
 It atomically copies the checkpoint and writes a provenance manifest under
 `runs/promoted/proteinmpnn-2026-v1-stage1/`.
 
+Build the separate stage2a dataset from v1's deferred oversized manifest on the
+host that stores the raw mmCIF snapshot:
+
+```bash
+scripts/build_pdb_2026_oversized_crops.sh
+```
+
+This launcher intentionally exposes no worker-count override: it keeps one file
+in flight, recycles the parser every 25 files, checks available memory, records
+peak RSS, and validates all generated payloads. Its default output is
+`processed/proteinmpnn_tar_shards_stage2a_v1`. Do not start stage-two training
+until that directory contains `validation.json` with `"status": "ok"`.
+
 The paired and multi-seed stage-1 scripts now use complete validation records only.
 The multi-seed script measures evaluation sensitivity; promotion across training
 seeds still requires independently trained runs.

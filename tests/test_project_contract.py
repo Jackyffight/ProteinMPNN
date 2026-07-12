@@ -257,9 +257,15 @@ class LauncherContractTest(unittest.TestCase):
         metadata_script = (ROOT / "scripts/download_wwpdb_entries_index.sh").read_text(encoding="utf-8")
         pack_script = (ROOT / "scripts/pack_proteinmpnn_tar_shards.py").read_text(encoding="utf-8")
         build_tar_script = (ROOT / "scripts/build_pdb_2026_tar_shards.sh").read_text(encoding="utf-8")
+        build_oversized_script = (
+            ROOT / "scripts/build_pdb_2026_oversized_crops.sh"
+        ).read_text(encoding="utf-8")
         shard_reader = (ROOT / "repo/training/tar_shard_utils.py").read_text(encoding="utf-8")
         builder = (ROOT / "repo/training/build_pdb_mmcif_dataset.py").read_text(encoding="utf-8")
         tar_builder = (ROOT / "repo/training/build_pdb_mmcif_tar_shard_dataset.py").read_text(encoding="utf-8")
+        oversized_builder = (
+            ROOT / "repo/training/build_pdb_oversized_crop_tar_dataset.py"
+        ).read_text(encoding="utf-8")
         versions_doc = (ROOT / "DATASET_VERSIONS.md").read_text(encoding="utf-8")
 
         self.assertIn("files.wwpdb.org/pub/pdb/data/assemblies/mmCIF/divided", sync_script)
@@ -293,6 +299,13 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("--max-context-length", build_tar_script)
         self.assertIn("structure_with_target_chain_ids", tar_builder)
         self.assertIn("Refusing to build production splits without homology clusters", build_tar_script)
+        self.assertIn("build_pdb_oversized_crop_tar_dataset.py", build_oversized_script)
+        self.assertIn("parser_workers: 1", build_oversized_script)
+        self.assertIn("worker-recycle-tasks", build_oversized_script)
+        self.assertIn("ProcessPoolExecutor", oversized_builder)
+        self.assertIn("spatial_crop", oversized_builder)
+        self.assertIn("reference_files_sha256", oversized_builder)
+        self.assertIn("Reference validation does not cover every v1 payload", oversized_builder)
         self.assertIn("dataset_format", (ROOT / "repo/training/training.py").read_text(encoding="utf-8"))
         self.assertIn("proteinmpnn_pdb_latest_<YYYYMMDD>", versions_doc)
         self.assertIn("Upstream Reference Baseline", versions_doc)

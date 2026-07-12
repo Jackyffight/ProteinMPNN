@@ -85,6 +85,12 @@ runs its full semantic validator automatically. The 2026-07-11 production build
 passed validation with 46,619 target records, zero parser failures, and zero
 exact-sequence or PDB split leaks.
 
+Build the deferred oversized assemblies as a separate stage2a spatial-crop
+dataset with `scripts/build_pdb_2026_oversized_crops.sh`. It preserves complete
+target chains, inherits v1 splits, uses one recycling parser worker, and runs the
+same exhaustive tar/payload validator. Targets above 2,000 residues and raw
+files above 50 MiB remain separate later inputs; see `DATASET_VERSIONS.md`.
+
 To download or rebuild the upstream reference archive from HTTP range parts:
 
 ```bash

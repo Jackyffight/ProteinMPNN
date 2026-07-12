@@ -121,6 +121,47 @@ two, and separately logged 101 compressed raw files above 50 MiB. It reported
 zero parser failures and passed exact-sequence and PDB split leakage checks with
 zero violations.
 
+### stage2a Oversized Spatial Crops
+
+Stage2a consumes only the 10,166 assemblies that v1 parsed successfully and
+deferred for total length or chain count. It does not process the separate set
+of 101 compressed mmCIF files above 50 MiB. For each assembly it:
+
+- preserves the complete deterministic target chain
+- ranks other chains by minimum resolved CA distance to the target
+- adds complete nearby chains while they fit, then at most one contiguous
+  nearest-residue window, under the same 2,000-residue and 62-chain bounds
+- clones retained tensor slices so serialized crops do not retain large backing
+  storage
+- inherits v1 valid/test assignments by homology cluster and exact sequence;
+  clusters found only in stage2a remain train
+- defers targets longer than 2,000 residues instead of making a discontinuous or
+  truncated target
+
+The production builder is fixed at one parser worker and one in-flight file. It
+restarts that worker every 25 files, records peak RSS in the manifest, and
+refuses to start with less than 8 GiB available memory. Build and validate with:
+
+```bash
+scripts/build_pdb_2026_oversized_crops.sh
+```
+
+Production output:
+
+```text
+proteinmpnn_pdb_20260708/processed/proteinmpnn_tar_shards_stage2a_v1
+```
+
+A 42-input boundary pilot covered a 69,654-residue, 78-chain assembly and two
+over-budget single-chain targets. It produced 40 valid crops with zero parser or
+split-leak failures; parser peak RSS was 1,657,896 KiB. The complete production
+artifact must pass the same exhaustive payload validator before stage-two
+training starts. Separate worst-case preflights covered the largest parsed
+context (357,240 residues, 780 chains) and largest compressed deferred input
+(52,020,427 bytes, 1,080 chains); their parser peaks were 3,289,472 KiB and
+3,654,784 KiB respectively. Long target chains and the 101 raw files above
+50 MiB remain a separate later substage.
+
 Purpose:
 
 - build our own current PDB-derived ProteinMPNN training dataset
