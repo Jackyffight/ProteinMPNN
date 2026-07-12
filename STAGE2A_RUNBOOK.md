@@ -105,5 +105,18 @@ This evaluates the selected checkpoint and stage-1 baseline on complete stage2a
 and fixed v1 test populations. The script refuses to overwrite an existing test
 summary.
 
+## 7. Promote The Selected Checkpoint
+
+Only after the one-shot test summary reports `"status": "passed"`:
+
+```bash
+scripts/promote_2026_stage2a.sh
+```
+
+Promotion independently rechecks both dual gates, their complete 19/426 valid
+and 13/461 test populations, the selected path and SHA256, and all recorded NLL
+deltas. It atomically writes `model.pt`, `promotion.json`, and copies of both
+gate summaries under `runs/promoted/proteinmpnn-2026-stage2a/`.
+
 If no checkpoint passes either dual gate, stop. The next experiment is a
 stage2a plus v1 replay mixture, not more epochs on stage2a alone.

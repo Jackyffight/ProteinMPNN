@@ -94,6 +94,9 @@ The post-build sync, pilot, dual-validation gate, and formal training commands
 are in `STAGE2A_RUNBOOK.md`.
 The completed stage2a artifact has 9,617 validated records across six shards;
 17 records from one train/valid bridge component are explicitly quarantined.
+After its formal dual-valid and one-shot dual-test gates pass,
+`scripts/promote_2026_stage2a.sh` creates the checksum-protected final artifact
+under `runs/promoted/proteinmpnn-2026-stage2a/`.
 
 To download or rebuild the upstream reference archive from HTTP range parts:
 

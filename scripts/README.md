@@ -113,6 +113,11 @@ factor and never restores the stage-1 optimizer. The checkpoint gate requires
 stage2a validation improvement while bounding v1 validation regression. See
 `STAGE2A_RUNBOOK.md` for the formal run and one-shot test sequence.
 
+After the formal checkpoint passes both the dual-valid and one-shot dual-test
+gates, run `scripts/promote_2026_stage2a.sh`. It verifies the selected checkpoint
+path and SHA256 plus the complete gate populations before writing the stable
+artifact under `runs/promoted/proteinmpnn-2026-stage2a/`.
+
 The paired and multi-seed stage-1 scripts now use complete validation records only.
 The multi-seed script measures evaluation sensitivity; promotion across training
 seeds still requires independently trained runs.
