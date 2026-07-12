@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local/protein-mrna-pipeline/tool-result.schema.json",
+  "title": "Protein-to-mRNA Tool Result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "work_id",
+    "worker_id",
+    "attempt",
+    "status",
+    "started_at_utc",
+    "finished_at_utc",
+    "runtime_seconds",
+    "artifacts",
+    "metrics",
+    "candidate_ids"
+  ],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": "protein-mrna.tool-result.v1"},
+    "work_id": {"$ref": "#/$defs/id"},
+    "worker_id": {"$ref": "#/$defs/id"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["succeeded", "failed", "retryable"]},
+    "started_at_utc": {"type": "string", "format": "date-time"},
+    "finished_at_utc": {"type": "string", "format": "date-time"},
+    "runtime_seconds": {"type": "number", "minimum": 0},
+    "artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "metrics": {"type": "object"},
+    "candidate_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/id"}
+    },
+    "error": {"$ref": "#/$defs/error"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {"enum": ["failed", "retryable"]}
+        }
+      },
+      "then": {"required": ["error"]}
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["artifact_id", "path", "sha256", "bytes", "media_type"],
+      "properties": {
+        "artifact_id": {"$ref": "#/$defs/id"},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "media_type": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["type", "message"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1},
+        "details": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

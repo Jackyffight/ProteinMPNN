@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local/protein-mrna-pipeline/candidate-record.schema.json",
+  "title": "Protein-to-mRNA Candidate Record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "candidate_id",
+    "target_id",
+    "target_sha256",
+    "stage",
+    "protein_sequence",
+    "provenance",
+    "hard_checks",
+    "scores",
+    "artifacts",
+    "decision",
+    "created_at_utc"
+  ],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": "protein-mrna.candidate-record.v1"},
+    "candidate_id": {"$ref": "#/$defs/id"},
+    "parent_candidate_id": {"$ref": "#/$defs/id"},
+    "target_id": {"$ref": "#/$defs/id"},
+    "target_sha256": {"$ref": "#/$defs/sha256"},
+    "stage": {
+      "enum": ["architecture", "mpnn", "refolded", "mrna", "final"]
+    },
+    "domain_order": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/id"}
+    },
+    "protein_sequence": {
+      "type": "string",
+      "pattern": "^[ACDEFGHIKLMNPQRSTVWYX]+$",
+      "minLength": 1
+    },
+    "mrna": {"$ref": "#/$defs/mrna"},
+    "provenance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/provenance"}
+    },
+    "hard_checks": {"$ref": "#/$defs/hard_checks"},
+    "scores": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [{"type": "number"}, {"type": "null"}]
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "decision": {"$ref": "#/$defs/decision"},
+    "created_at_utc": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"stage": {"enum": ["mrna", "final"]}}
+      },
+      "then": {"required": ["mrna"]}
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "status": {"enum": ["not_run", "passed", "failed"]},
+    "provenance": {
+      "type": "object",
+      "required": [
+        "work_id",
+        "tool_name",
+        "revision",
+        "weights_sha256",
+        "parameters",
+        "seed"
+      ],
+      "properties": {
+        "work_id": {"$ref": "#/$defs/id"},
+        "tool_name": {"$ref": "#/$defs/id"},
+        "revision": {"type": "string", "minLength": 1},
+        "weights_sha256": {
+          "oneOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"type": "null"}
+          ]
+        },
+        "parameters": {"type": "object"},
+        "seed": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "hard_checks": {
+      "type": "object",
+      "required": [
+        "immutable_residues",
+        "maximum_length",
+        "translation_preservation",
+        "safety"
+      ],
+      "properties": {
+        "immutable_residues": {"$ref": "#/$defs/status"},
+        "maximum_length": {"$ref": "#/$defs/status"},
+        "translation_preservation": {"$ref": "#/$defs/status"},
+        "safety": {"$ref": "#/$defs/status"}
+      },
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["artifact_id", "path", "sha256", "bytes", "media_type"],
+      "properties": {
+        "artifact_id": {"$ref": "#/$defs/id"},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "media_type": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "mrna": {
+      "type": "object",
+      "required": [
+        "cds_sequence",
+        "translated_protein_sha256",
+        "translation_check"
+      ],
+      "properties": {
+        "cds_sequence": {
+          "type": "string",
+          "pattern": "^[ACGTN]+$",
+          "minLength": 3
+        },
+        "translated_protein_sha256": {"$ref": "#/$defs/sha256"},
+        "translation_check": {"$ref": "#/$defs/status"}
+      },
+      "additionalProperties": false
+    },
+    "decision": {
+      "type": "object",
+      "required": ["status", "reasons"],
+      "properties": {
+        "status": {"enum": ["pending", "retained", "rejected"]},
+        "reasons": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local/protein-mrna-pipeline/run-manifest.schema.json",
+  "title": "Protein-to-mRNA Pipeline Run Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "created_at_utc",
+    "target",
+    "pipeline",
+    "safety_gate",
+    "queue"
+  ],
+  "properties": {
+    "schema_version": {"const": "protein-mrna.run-manifest.v1"},
+    "run_id": {"$ref": "#/$defs/id"},
+    "created_at_utc": {"type": "string", "format": "date-time"},
+    "target": {
+      "type": "object",
+      "required": ["target_id", "revision", "sha256", "path"],
+      "properties": {
+        "target_id": {"$ref": "#/$defs/id"},
+        "revision": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "path": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "pipeline": {
+      "type": "object",
+      "required": ["version", "git_commit", "git_dirty"],
+      "properties": {
+        "version": {"type": "string", "minLength": 1},
+        "git_commit": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            {"type": "null"}
+          ]
+        },
+        "git_dirty": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "safety_gate": {
+      "type": "object",
+      "required": ["target_status", "override_used"],
+      "properties": {
+        "target_status": {
+          "enum": ["not_reviewed", "in_review", "approved", "denied"]
+        },
+        "override_used": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "queue": {
+      "type": "object",
+      "required": ["backend", "path"],
+      "properties": {
+        "backend": {"const": "sqlite"},
+        "path": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "schema_version": "protein-mrna.target-package.v1",
+  "target_id": "synthetic-two-domain-example",
+  "revision": 1,
+  "display_name": "Synthetic two-domain contract example",
+  "description": "Non-biological placeholder used only to exercise pipeline contracts.",
+  "domains": [
+    {
+      "domain_id": "domain-a",
+      "role": "other",
+      "amino_acid_sequence": "ACDEFGHIKLMNPQRSTVWY",
+      "immutable_regions": [
+        {
+          "domain_id": "domain-a",
+          "start": 1,
+          "end": 5,
+          "label": "example immutable region"
+        }
+      ],
+      "notes": "Synthetic sequence; not a real design target."
+    },
+    {
+      "domain_id": "domain-b",
+      "role": "other",
+      "amino_acid_sequence": "YWVTSRQPNMLKIHGFEDCA",
+      "immutable_regions": [],
+      "notes": "Synthetic sequence; fully mutable in this schema example."
+    }
+  ],
+  "architecture": {
+    "allowed_domain_orders": [
+      ["domain-a", "domain-b"]
+    ],
+    "linker_options": [
+      {
+        "linker_id": "flexible-5-15",
+        "between": ["domain-a", "domain-b"],
+        "family": "synthetic-flexible-example",
+        "min_length": 5,
+        "max_length": 15,
+        "allowed_sequences": ["GGGGS"]
+      }
+    ],
+    "allow_direct_fusion": false,
+    "oligomeric_state": "monomer",
+    "maximum_total_length": 60
+  },
+  "design_constraints": {
+    "fixed_regions": [
+      {
+        "domain_id": "domain-a",
+        "start": 1,
+        "end": 5,
+        "label": "same protected example region"
+      }
+    ],
+    "mutable_regions": [
+      {
+        "domain_id": "domain-b",
+        "start": 1,
+        "end": 20,
+        "label": "example mutable domain"
+      }
+    ],
+    "forbidden_motifs": [],
+    "prohibited_modifications": [
+      "Do not reinterpret this synthetic example as a reviewed biological target."
+    ]
+  },
+  "expression": {
+    "host": "example-only",
+    "purification_tags": [],
+    "notes": "No expression experiment is authorized by this example."
+  },
+  "safety": {
+    "status": "not_reviewed",
+    "notes": "A real target requires a separate approved review record.",
+    "prohibited_modifications": [
+      "No GPU-scale design from this placeholder."
+    ]
+  },
+  "metadata": {
+    "owner": "pipeline-contract-test",
+    "created_at_utc": "2026-07-12T00:00:00+00:00",
+    "source_references": [
+      "synthetic-contract-example"
+    ],
+    "notes": "This file validates syntax and semantics only."
+  }
+}

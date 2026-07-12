@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "protein-mrna-pipeline"
+version = "0.1.0"
+description = "Auditable orchestration contracts for the protein-to-mRNA design pipeline"
+requires-python = ">=3.10"
+dependencies = ["jsonschema>=4.18"]
+
+[project.scripts]
+protein-mrna-pipeline = "protein_mrna_pipeline.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+protein_mrna_pipeline = ["py.typed", "schemas/*.json"]
