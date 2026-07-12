@@ -27,10 +27,14 @@ if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then
 fi
 RUN_DIR="$(cd "$RUN_DIR" && pwd)"
 
-SPLIT="${SPLIT:-test}"
+SPLIT="${SPLIT:-valid}"
 SEEDS="${SEEDS:-11 23 42 67 101}"
 PYTHON_BIN="${PROTEINMPNN_PYTHON:-${PYTHON_BIN:-python}}"
 read -r -a seed_values <<< "$SEEDS"
+if [ "$SPLIT" != "valid" ]; then
+  echo "Error: multi-seed sensitivity evaluation is valid-only, got: $SPLIT" >&2
+  exit 1
+fi
 if [ "${#seed_values[@]}" -lt 2 ]; then
   echo "Error: SEEDS must contain at least two integer seeds." >&2
   exit 1

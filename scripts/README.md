@@ -67,16 +67,22 @@ all available v1 training clusters, saving periodic checkpoints every 5 epochs.
 It is intentionally single-GPU because this training loop does not yet implement
 DDP or distributed metric reduction.
 
-After stage 1 finishes, compare its best checkpoint with the official weights on
-the same deterministic held-out v1 test sample:
+After stage 1 finishes, rank all retained checkpoints and the official weights on
+the complete fixed 2026 v1 validation population:
 
 ```bash
-scripts/evaluate_2026_v1_stage1.sh
-scripts/evaluate_2026_v1_stage1_multiseed.sh
+scripts/evaluate_2026_v1_stage1_checkpoints.sh
 ```
 
-Use the multi-seed result as the promotion gate; the single-seed command is a
-quick initial check.
+After the fixed-valid summary selects one checkpoint, run the test comparison once:
+
+```bash
+scripts/evaluate_2026_v1_selected_test.sh
+```
+
+The paired and multi-seed stage-1 scripts now use complete validation records only.
+The multi-seed script measures evaluation sensitivity; promotion across training
+seeds still requires independently trained runs.
 
 Current unmeasured presets mirror the mRNABERT launcher style: use `v100`
 for conservative token budgets and `a100` for larger token budgets. Run the

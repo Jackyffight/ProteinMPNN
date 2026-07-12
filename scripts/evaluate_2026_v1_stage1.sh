@@ -32,8 +32,8 @@ DATA_DIR="${DATA_DIR:-$PROTEINMPNN_V1_DATA_DIR}"
 OFFICIAL_CHECKPOINT="$REPO_ROOT/repo/vanilla_model_weights/v_48_020.pt"
 CANDIDATE_CHECKPOINT="${CANDIDATE_CHECKPOINT:-$RUN_DIR/model_weights/best.pt}"
 EVAL_OUTPUT_DIR="${EVAL_OUTPUT_DIR:-$RUN_DIR/evaluations}"
-MAX_EXAMPLES="${MAX_EXAMPLES:-1000}"
-SPLIT="${SPLIT:-test}"
+MAX_EXAMPLES="${MAX_EXAMPLES:-0}"
+SPLIT="${SPLIT:-valid}"
 SEED="${SEED:-42}"
 DEVICES="${DEVICES:-0}"
 
@@ -41,8 +41,9 @@ if ! [[ "$DEVICES" =~ ^[0-9]+$ ]]; then
   echo "Error: DEVICES must contain one numeric GPU index, got: $DEVICES" >&2
   exit 1
 fi
-if [ "$SPLIT" != "valid" ] && [ "$SPLIT" != "test" ]; then
-  echo "Error: SPLIT must be valid or test, got: $SPLIT" >&2
+if [ "$SPLIT" != "valid" ]; then
+  echo "Error: stage-1 selection must use the valid split, got: $SPLIT" >&2
+  echo "Use scripts/evaluate_2026_v1_selected_test.sh after selecting one checkpoint." >&2
   exit 1
 fi
 if [ ! -s "$CANDIDATE_CHECKPOINT" ]; then
@@ -65,6 +66,8 @@ SPLIT="$SPLIT" \
 OUTPUT="$OFFICIAL_OUTPUT" \
   "$SCRIPT_DIR/evaluate_official_checkpoint.sh" \
     --dataset-format tar \
+    --evaluation-unit records \
+    --require-complete \
     --seed "$SEED" \
     >/dev/null
 
@@ -77,6 +80,8 @@ SPLIT="$SPLIT" \
 OUTPUT="$CANDIDATE_OUTPUT" \
   "$SCRIPT_DIR/evaluate_official_checkpoint.sh" \
     --dataset-format tar \
+    --evaluation-unit records \
+    --require-complete \
     --seed "$SEED" \
     >/dev/null
 

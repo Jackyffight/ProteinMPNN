@@ -107,10 +107,14 @@ class LauncherContractTest(unittest.TestCase):
         script_path = ROOT / "scripts/run_2026_v1_pilot_a100.sh"
         stage1_path = ROOT / "scripts/run_2026_v1_stage1_a100.sh"
         evaluation_path = ROOT / "scripts/evaluate_2026_v1_stage1.sh"
+        checkpoint_suite_path = ROOT / "scripts/evaluate_2026_v1_stage1_checkpoints.sh"
+        selected_test_path = ROOT / "scripts/evaluate_2026_v1_selected_test.sh"
         multiseed_path = ROOT / "scripts/evaluate_2026_v1_stage1_multiseed.sh"
         script = script_path.read_text(encoding="utf-8")
         stage1 = stage1_path.read_text(encoding="utf-8")
         evaluation = evaluation_path.read_text(encoding="utf-8")
+        checkpoint_suite = checkpoint_suite_path.read_text(encoding="utf-8")
+        selected_test = selected_test_path.read_text(encoding="utf-8")
         multiseed = multiseed_path.read_text(encoding="utf-8")
         checkpoint_script = (ROOT / "scripts/ensure_official_checkpoint.sh").read_text(
             encoding="utf-8"
@@ -130,12 +134,20 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn('SAVE_EVERY="${SAVE_EVERY:-5}"', stage1)
         self.assertIn("run_2026_v1_pilot_a100.sh", stage1)
         self.assertIn("model_weights/best.pt", evaluation)
-        self.assertIn('SPLIT="${SPLIT:-test}"', evaluation)
+        self.assertIn('SPLIT="${SPLIT:-valid}"', evaluation)
+        self.assertIn('MAX_EXAMPLES="${MAX_EXAMPLES:-0}"', evaluation)
+        self.assertIn("--evaluation-unit records", evaluation)
+        self.assertIn("--require-complete", evaluation)
         self.assertIn("evaluated_structure_ids_sha256", evaluation)
         self.assertIn("status: {status}", evaluation)
+        self.assertIn("fixed-valid-records", checkpoint_suite)
+        self.assertIn("epoch*.pt", checkpoint_suite)
+        self.assertIn("selected checkpoint", selected_test.lower())
+        self.assertIn("--split test", selected_test)
         self.assertIn("11 23 42 67 101", multiseed)
+        self.assertIn('SPLIT="${SPLIT:-valid}"', multiseed)
         self.assertIn("evaluated_structure_ids_sha256", multiseed)
-        self.assertIn("consistently_improved", multiseed)
+        self.assertNotIn('SPLIT="${SPLIT:-test}"', multiseed)
         self.assertIn("dauparas/ProteinMPNN", checkpoint_script)
         self.assertIn("8907e6671bfbfc92303b5f79c4b5e6ce47cdef57", checkpoint_script)
         self.assertIn("6681301", checkpoint_script)
@@ -350,7 +362,7 @@ class TrainingContractTest(unittest.TestCase):
         self.assertIn("get_pdbs", evaluator)
         self.assertIn("featurize", evaluator)
         self.assertIn("loss_nll", evaluator)
-        self.assertIn("checkpoint_evaluation.v1", evaluator)
+        self.assertIn("checkpoint_evaluation.v2", evaluator)
         self.assertIn("v_48_020.pt", wrapper)
 
     def test_amp_gradient_clip_unscales_before_clipping(self):

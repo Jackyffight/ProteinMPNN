@@ -19,6 +19,7 @@ from checkpoint_utils import (
     load_model_weights,
     validate_num_edges,
 )
+from evaluation_utils import flatten_split_records
 from model_utils import ProteinMPNN, featurize, loss_nll
 from tar_shard_utils import loader_tar_pdb
 from utils import (
@@ -42,7 +43,23 @@ def parse_args():
     parser.add_argument("--dataset-format", choices=["auto", "pt", "tar"], default="auto")
     parser.add_argument("--split", choices=["train", "valid", "test"], default="valid")
     parser.add_argument("--output", default="", help="optional JSON result path")
-    parser.add_argument("--max-examples", type=int, default=1000)
+    parser.add_argument(
+        "--max-examples",
+        type=int,
+        default=0,
+        help="maximum evaluation structures; 0 evaluates the complete selected split",
+    )
+    parser.add_argument(
+        "--evaluation-unit",
+        choices=["records", "clusters"],
+        default="records",
+        help="records evaluates every held-out chain; clusters samples one chain per cluster",
+    )
+    parser.add_argument(
+        "--require-complete",
+        action="store_true",
+        help="fail if filtering or loading prevents evaluation of every requested structure",
+    )
     parser.add_argument("--batch-tokens", type=int, default=3000)
     parser.add_argument("--max-protein-length", type=int, default=2000)
     parser.add_argument(
@@ -97,10 +114,25 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
+class FixedItemsDataset:
+    """Load a deterministic list of chain records without cluster resampling."""
+
+    def __init__(self, items, loader, params):
+        self.items = list(items)
+        self.loader = loader
+        self.params = params
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, index):
+        return self.loader(self.items[index], self.params)
+
+
 def main():
     args = parse_args()
-    if args.max_examples <= 0:
-        raise ValueError("--max-examples must be positive")
+    if args.max_examples < 0:
+        raise ValueError("--max-examples must be >= 0")
     if args.batch_tokens <= 0:
         raise ValueError("--batch-tokens must be positive")
     if args.load_chunk_size <= 0:
@@ -155,8 +187,18 @@ def main():
         "worker_init_fn": worker_init_fn,
         "generator": torch.Generator().manual_seed(args.seed),
     }
-    raw_dataset = PDB_dataset(list(split_clusters.keys()), pdb_loader, split_clusters, params)
+    split_records = flatten_split_records(split_clusters)
+    if args.evaluation_unit == "records":
+        raw_dataset = FixedItemsDataset(split_records, pdb_loader, params)
+    else:
+        raw_dataset = PDB_dataset(list(split_clusters.keys()), pdb_loader, split_clusters, params)
     raw_loader = torch.utils.data.DataLoader(raw_dataset, **loader_options)
+    available_evaluation_units = len(raw_dataset)
+    target_structures = (
+        available_evaluation_units
+        if args.max_examples == 0
+        else min(args.max_examples, available_evaluation_units)
+    )
 
     model = ProteinMPNN(
         node_features=args.hidden_dim,
@@ -171,7 +213,12 @@ def main():
     load_model_weights(model, checkpoint, checkpoint_path)
     model.eval()
 
-    print(f"Evaluating up to {args.max_examples} structures on {device}", file=sys.stderr, flush=True)
+    print(
+        f"Evaluating {target_structures}/{available_evaluation_units} "
+        f"{args.evaluation_unit} on {device}",
+        file=sys.stderr,
+        flush=True,
+    )
     raw_iterator = iter(raw_loader)
     data_loading_seconds = time.time() - started_at
     evaluation_seconds = 0.0
@@ -181,9 +228,9 @@ def main():
     batch_count = 0
     evaluated_structures = 0
     evaluated_structure_ids = []
-    while evaluated_structures < args.max_examples:
+    while evaluated_structures < target_structures:
         requested_chunk_size = min(
-            args.load_chunk_size, args.max_examples - evaluated_structures
+            args.load_chunk_size, target_structures - evaluated_structures
         )
         loading_started_at = time.time()
         structure_records = get_pdbs(
@@ -221,7 +268,7 @@ def main():
         evaluation_seconds += time.time() - chunk_evaluation_started_at
         evaluated_structures += len(structure_dataset)
         print(
-            f"Evaluated {evaluated_structures}/{args.max_examples} structures",
+            f"Evaluated {evaluated_structures}/{target_structures} structures",
             file=sys.stderr,
             flush=True,
         )
@@ -230,10 +277,15 @@ def main():
 
     if evaluated_structures == 0 or token_count == 0:
         raise RuntimeError("evaluation produced no structures with masked residues")
+    if args.require_complete and evaluated_structures != target_structures:
+        raise RuntimeError(
+            "evaluation was incomplete: "
+            f"evaluated={evaluated_structures} expected={target_structures}"
+        )
 
     mean_loss = loss_sum / token_count
     result = {
-        "schema": "proteinmpnn.checkpoint_evaluation.v1",
+        "schema": "proteinmpnn.checkpoint_evaluation.v2",
         "checkpoint": {
             "path": str(checkpoint_path),
             "sha256": sha256_file(checkpoint_path),
@@ -244,7 +296,11 @@ def main():
             "dataset_format": dataset_format,
             "split": args.split,
             "cluster_count": len(split_clusters),
+            "record_count": len(split_records),
+            "evaluation_unit": args.evaluation_unit,
+            "available_evaluation_units": available_evaluation_units,
             "requested_max_examples": args.max_examples,
+            "expected_structures": target_structures,
             "evaluated_structures": evaluated_structures,
             "evaluated_structure_ids": evaluated_structure_ids,
             "evaluated_structure_ids_sha256": hashlib.sha256(
@@ -255,6 +311,7 @@ def main():
             "rescut": args.rescut,
             "homology_cutoff": args.homology_cutoff,
             "date_cutoff": args.date_cutoff,
+            "require_complete": args.require_complete,
         },
         "model": {
             "hidden_dim": args.hidden_dim,

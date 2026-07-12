@@ -154,17 +154,25 @@ This stage uses one A100, all available v1 training clusters, 20 epochs, a
 5 epochs. The current training loop does not implement DDP; a comma-separated
 GPU list is rejected instead of silently using only one of the requested GPUs.
 
-Compare the finished run's `best.pt` with the official checkpoint on identical
-held-out v1 test structures before selecting it for a later stage:
+Rank the official checkpoint and every retained stage-1 checkpoint on all 426
+fixed 2026 v1 validation records:
 
 ```bash
-scripts/evaluate_2026_v1_stage1.sh
-scripts/evaluate_2026_v1_stage1_multiseed.sh
+scripts/evaluate_2026_v1_stage1_checkpoints.sh
 ```
 
-The multi-seed comparison is the promotion gate. It repeats the paired held-out
-test evaluation with seeds `11 23 42 67 101` and reports the mean delta plus the
-number of seeds on which the stage-1 checkpoint wins.
+The evaluator fails unless every record is scored and every checkpoint sees the
+same ordered structure IDs. It writes a fixed-valid ranking and selects one
+checkpoint by validation NLL. Only after that selection, evaluate the official and
+selected checkpoints once on all 461 test records:
+
+```bash
+scripts/evaluate_2026_v1_selected_test.sh
+```
+
+`evaluate_2026_v1_stage1.sh` remains a quick paired valid check of `best.pt`.
+`evaluate_2026_v1_stage1_multiseed.sh` is a validation sensitivity check over
+assembly-selection seeds; it is not a substitute for independently trained seeds.
 
 Full baseline from data download through training:
 
