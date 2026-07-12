@@ -18,7 +18,9 @@ training code plus the inference entry point `protein_mpnn_run.py`; the examples
 and colab directories are not vendored. This
 project adds the local retraining launcher, operational scripts, dataset
 provenance, and the mRNABERT design-manifest bridge; it does not modify the
-ProteinMPNN model. Training data is the IPD `pdb_2021aug02` reference set.
+ProteinMPNN architecture. The IPD `pdb_2021aug02` set is retained as the
+upstream reference, while the promoted 2026 release uses the owned post-2021 v1
+and Stage2a continuation datasets documented below.
 
 ## Repository Status
 
@@ -26,6 +28,7 @@ ProteinMPNN model. Training data is the IPD `pdb_2021aug02` reference set.
 - Upstream source subset: `repo/`
 - Launcher: `run_train.sh`
 - Operational wrappers: `scripts/`
+- Final 2026 Stage2a model card: `MODEL_CARD_2026_STAGE2A.md`
 - mRNA bridge contract: `design_manifest.schema.json`
 - Training data location: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02`
 
