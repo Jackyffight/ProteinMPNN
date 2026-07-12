@@ -154,6 +154,13 @@ This stage uses one A100, all available v1 training clusters, 20 epochs, a
 5 epochs. The current training loop does not implement DDP; a comma-separated
 GPU list is rejected instead of silently using only one of the requested GPUs.
 
+Compare the finished run's `best.pt` with the official checkpoint on identical
+held-out v1 test structures before selecting it for a later stage:
+
+```bash
+scripts/evaluate_2026_v1_stage1.sh
+```
+
 Full baseline from data download through training:
 
 ```bash

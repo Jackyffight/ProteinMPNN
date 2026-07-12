@@ -67,6 +67,13 @@ all available v1 training clusters, saving periodic checkpoints every 5 epochs.
 It is intentionally single-GPU because this training loop does not yet implement
 DDP or distributed metric reduction.
 
+After stage 1 finishes, compare its best checkpoint with the official weights on
+the same deterministic held-out v1 test sample:
+
+```bash
+scripts/evaluate_2026_v1_stage1.sh
+```
+
 Current unmeasured presets mirror the mRNABERT launcher style: use `v100`
 for conservative token budgets and `a100` for larger token budgets. Run the
 throughput benchmark before long training on a new host, then keep the measured
