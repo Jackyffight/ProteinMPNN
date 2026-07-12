@@ -18,6 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 SCHEMA_FILES = {
     "target": "target-package.schema.json",
+    "benchmark-suite": "benchmark-suite.schema.json",
     "work-item": "work-item.schema.json",
     "tool-result": "tool-result.schema.json",
     "candidate": "candidate-record.schema.json",
@@ -267,6 +268,131 @@ def target_sha256(document: dict) -> str:
     return document_sha256(document)
 
 
+def benchmark_identity(document: dict) -> dict:
+    source = {
+        key: value
+        for key, value in document["source"].items()
+        if key != "dataset_path"
+    }
+    selection = document["selection"]
+    length_bins = [
+        {
+            "label": length_bin["label"],
+            "min_length": length_bin["min_length"],
+            "max_length": length_bin["max_length"],
+        }
+        for length_bin in selection["length_bins"]
+    ]
+    records = [
+        {
+            "benchmark_record_id": record["benchmark_record_id"],
+            "source_chain_id": record["source_chain_id"],
+            "source_cluster": record["source_cluster"],
+            "sequence_sha256": record["sequence_sha256"],
+            "length": record["length"],
+            "length_bin": record["length_bin"],
+        }
+        for record in document["records"]
+    ]
+    return {
+        "purpose": document["purpose"],
+        "source": source,
+        "selection": {
+            "seed": selection["seed"],
+            "requested_count": selection["requested_count"],
+            "min_length": selection["min_length"],
+            "max_length": selection["max_length"],
+            "canonical_amino_acids_only": selection["canonical_amino_acids_only"],
+            "one_record_per_cluster": selection["one_record_per_cluster"],
+            "exact_sequence_unique": selection["exact_sequence_unique"],
+            "length_bins": length_bins,
+        },
+        "records": records,
+    }
+
+
+def derive_benchmark_id(document: dict) -> str:
+    return f"pdb-valid-{document_sha256(benchmark_identity(document))[:20]}"
+
+
+def validate_benchmark_suite(document: dict) -> None:
+    validate_schema(document, "benchmark-suite")
+    records = document["records"]
+    _unique_ids(records, "benchmark_record_id", "benchmark record")
+    chain_ids = [record["source_chain_id"] for record in records]
+    clusters = [int(record["source_cluster"]) for record in records]
+    sequence_hashes = [record["sequence_sha256"] for record in records]
+    if len(chain_ids) != len(set(chain_ids)):
+        raise ContractError("benchmark contains duplicate source chain IDs")
+    if len(clusters) != len(set(clusters)):
+        raise ContractError("benchmark must contain at most one record per cluster")
+    if len(sequence_hashes) != len(set(sequence_hashes)):
+        raise ContractError("benchmark contains duplicate exact sequences")
+
+    selection = document["selection"]
+    if int(selection["selected_count"]) != len(records):
+        raise ContractError("benchmark selected_count does not match records")
+    if int(selection["requested_count"]) != len(records):
+        raise ContractError("benchmark selection did not satisfy requested_count")
+    minimum = int(selection["min_length"])
+    maximum = int(selection["max_length"])
+    if minimum > maximum:
+        raise ContractError("benchmark min_length exceeds max_length")
+
+    bins_by_label = {}
+    expected_start = minimum
+    for length_bin in selection["length_bins"]:
+        label = length_bin["label"]
+        if label in bins_by_label:
+            raise ContractError(f"duplicate benchmark length-bin label: {label}")
+        bin_minimum = int(length_bin["min_length"])
+        bin_maximum = int(length_bin["max_length"])
+        if bin_minimum != expected_start or bin_maximum < bin_minimum:
+            raise ContractError("benchmark length bins must be contiguous and ordered")
+        expected_start = bin_maximum + 1
+        bins_by_label[label] = length_bin
+    if expected_start != maximum + 1:
+        raise ContractError("benchmark length bins do not cover the selected range")
+
+    observed_by_bin = Counter()
+    for record in records:
+        sequence = record["sequence"]
+        if len(sequence) != int(record["length"]):
+            raise ContractError(
+                f"benchmark sequence length mismatch: {record['benchmark_record_id']}"
+            )
+        if text_sha256(sequence) != record["sequence_sha256"]:
+            raise ContractError(
+                f"benchmark sequence SHA256 mismatch: {record['benchmark_record_id']}"
+            )
+        length_bin = bins_by_label.get(record["length_bin"])
+        if length_bin is None:
+            raise ContractError(
+                f"benchmark record references unknown length bin: {record['length_bin']}"
+            )
+        if not int(length_bin["min_length"]) <= len(sequence) <= int(
+            length_bin["max_length"]
+        ):
+            raise ContractError(
+                f"benchmark record is outside its length bin: {record['benchmark_record_id']}"
+            )
+        observed_by_bin[record["length_bin"]] += 1
+    for label, length_bin in bins_by_label.items():
+        if int(length_bin["selected"]) != observed_by_bin[label]:
+            raise ContractError(f"benchmark selected count is wrong for length bin: {label}")
+        if int(length_bin["eligible"]) < int(length_bin["selected"]):
+            raise ContractError(f"benchmark eligible count is too small for length bin: {label}")
+
+    if int(document["fasta"]["records"]) != len(records):
+        raise ContractError("benchmark FASTA record count does not match records")
+    expected_id = derive_benchmark_id(document)
+    if document["benchmark_id"] != expected_id:
+        raise ContractError(
+            f"benchmark_id does not match canonical selection: "
+            f"{document['benchmark_id']} != {expected_id}"
+        )
+
+
 def work_identity(document: dict) -> dict:
     return {
         key: value
@@ -378,6 +504,7 @@ def validate_run_manifest(document: dict) -> None:
 
 VALIDATORS = {
     "target": validate_target,
+    "benchmark-suite": validate_benchmark_suite,
     "work-item": validate_work_item,
     "tool-result": validate_tool_result,
     "candidate": validate_candidate,

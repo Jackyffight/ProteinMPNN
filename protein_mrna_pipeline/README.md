@@ -17,6 +17,15 @@ This project owns their contracts, provenance, queue state, hard checks, and
 candidate tables. It does not vendor their weights or hide their component
 scores behind one scalar.
 
+The project has two separate lanes:
+
+- the active **engineering benchmark lane** uses fixed native sequences from the
+  existing PDB validation split to test throughput, recovery, provenance, and
+  storage without making biological design decisions;
+- the conditional **research design lane** starts only when a research owner
+  supplies and reviews a real target package. Engineers are not expected to
+  invent domains, mutable residues, linkers, or biological objectives.
+
 ## Current Status
 
 Implemented in the initial scaffold:
@@ -26,6 +35,8 @@ Implemented in the initial scaffold:
 - semantic target checks for domain references, residue bounds, immutable versus
   mutable overlap, linker coverage, and maximum length;
 - canonical JSON SHA256 identities and deterministic work IDs;
+- deterministic, cluster-unique PDB validation benchmarks generated without
+  reading structure tar shards or importing torch;
 - atomic run initialization with a mandatory safety gate;
 - a transactional SQLite queue with leases, retries, attempt history, status,
   and JSONL export;
@@ -43,8 +54,10 @@ Not implemented yet:
 - synonymous CDS generation and mRNABERT adapters;
 - a real reviewed target package.
 
-No large GPU job should start until the structure adapter passes the smoke and
-throughput gate in `docs/SEVEN_DAY_EXECUTION_PLAN.md`.
+No large GPU job should start until the structure adapter passes the bounded
+engineering smoke and throughput gate in `docs/SEVEN_DAY_EXECUTION_PLAN.md`.
+An approved target is required for design work, not for the native-sequence
+engineering benchmark.
 
 ## Install
 
@@ -64,10 +77,48 @@ PYTHONPATH=protein_mrna_pipeline/src \
   python -m protein_mrna_pipeline --help
 ```
 
-## Validate A Target
+## Engineering Benchmark
 
-The included example is intentionally unreviewed and cannot initialize a formal
-run by default:
+This is the current entry point and requires no research input. From the
+ProteinMPNN repository root on the GPU server:
+
+```bash
+scripts/prepare_2026_structure_benchmark.sh --dry-run
+scripts/prepare_2026_structure_benchmark.sh
+```
+
+The selected Python environment must contain the project dependency
+`jsonschema>=4.18`; the script checks this before writing output.
+
+The default selection is 40 records from `valid`, seed 42, lengths 50-800, one
+record per sequence cluster, with exact sequences deduplicated. It verifies that
+the source dataset passed split-leak validation. It never opens the large tar
+shards and never consumes `test` records.
+This fixed `valid` suite is for throughput calibration and evaluation only; it
+must not train a surrogate or tune model weights.
+
+Outputs:
+
+```text
+runs/benchmarks/structure-input-valid-.../
+  benchmark-suite.json
+  sequences.fasta
+```
+
+This command does not start a GPU process. The next engineering milestone is to
+pin an actually available structure-model runtime and connect its adapter to
+these records.
+
+Inventory that runtime without installing packages or starting inference:
+
+```bash
+scripts/inspect_structure_runtime.sh
+```
+
+## Research Target Lane
+
+The included target example is intentionally unreviewed and cannot initialize a
+formal design run by default. It is not needed for the engineering benchmark:
 
 ```bash
 protein-mrna-pipeline validate \

@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -14,12 +15,18 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from protein_mrna_pipeline.contracts import (  # noqa: E402
     ContractError,
     SCHEMA_FILES,
+    derive_benchmark_id,
     load_schema,
     read_json,
     target_sha256,
     text_sha256,
     validate_candidate,
+    validate_benchmark_suite,
     validate_target,
+)
+from protein_mrna_pipeline.benchmark import (  # noqa: E402
+    generate_benchmark_suite,
+    verify_benchmark_suite_files,
 )
 from protein_mrna_pipeline.run_store import RunStore, initialize_run  # noqa: E402
 
@@ -64,6 +71,51 @@ def work_item(manifest):
         "max_attempts": 3,
         "inputs": [],
     }
+
+
+def write_benchmark_dataset(root):
+    root.mkdir()
+    write_json(
+        root / "manifest.json",
+        {
+            "format": "proteinmpnn.tar_shard.v2",
+            "version_id": "fixture-pdb-2026",
+            "record_count": 10,
+        },
+    )
+    write_json(
+        root / "validation.json",
+        {
+            "schema": "proteinmpnn.tar_shard_validation.v2",
+            "status": "ok",
+            "exact_sequence_split_leaks": 0,
+            "pdb_split_leaks": 0,
+            "records": 10,
+            "payloads_checked": 10,
+        },
+    )
+    (root / "valid_clusters.txt").write_text(
+        "".join(f"{cluster}\n" for cluster in range(1, 9)),
+        encoding="utf-8",
+    )
+    (root / "test_clusters.txt").write_text("99\n", encoding="utf-8")
+    header = "CHAINID,DEPOSITION,RESOLUTION,HASH,CLUSTER,SEQUENCE\n"
+    alphabet = "ACDEFGHIKLMNPQRSTVWY"
+
+    def sequence(length, offset):
+        rotated = alphabet[offset:] + alphabet[:offset]
+        return (rotated * (length // len(rotated) + 1))[:length]
+
+    rows = []
+    for index, length in enumerate((60, 120, 250, 350, 450, 550, 650, 750), 1):
+        rows.append(
+            f"fixture{index}_A,2026-01-{index:02d},2.00,h{index},{index},"
+            f"{sequence(length, index)}\n"
+        )
+    rows.append(f"duplicate_A,2026-01-09,2.00,h9,1,{sequence(80, 9)}\n")
+    rows.append(f"testonly_A,2026-01-10,2.00,h10,99,{sequence(100, 10)}\n")
+    (root / "list.csv").write_text(header + "".join(rows), encoding="utf-8")
+    return root
 
 
 class ContractTest(unittest.TestCase):
@@ -142,6 +194,99 @@ class ContractTest(unittest.TestCase):
         candidate["scores"]["non_finite"] = float("nan")
         with self.assertRaisesRegex(ContractError, "not canonical JSON"):
             validate_candidate(candidate)
+
+
+class BenchmarkTest(unittest.TestCase):
+    def test_valid_split_selection_is_deterministic_balanced_and_unique(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset = write_benchmark_dataset(root / "dataset")
+            copied_dataset = root / "dataset-copy"
+            shutil.copytree(dataset, copied_dataset)
+            first_summary = generate_benchmark_suite(dataset, root / "first", requested_count=4)
+            second_summary = generate_benchmark_suite(
+                copied_dataset,
+                root / "second",
+                requested_count=4,
+            )
+            first = read_json(first_summary["suite_path"])
+            second = read_json(second_summary["suite_path"])
+
+            validate_benchmark_suite(first)
+            verification = verify_benchmark_suite_files(first_summary["suite_path"])
+            self.assertEqual(verification["status"], "ok")
+            self.assertEqual(first["benchmark_id"], derive_benchmark_id(first))
+            self.assertEqual(first["benchmark_id"], second["benchmark_id"])
+            self.assertEqual(first["records"], second["records"])
+            self.assertNotEqual(
+                first["source"]["dataset_path"],
+                second["source"]["dataset_path"],
+            )
+            self.assertEqual(first["source"]["split"], "valid")
+            self.assertEqual(len(first["records"]), 4)
+            self.assertEqual(
+                [length_bin["selected"] for length_bin in first["selection"]["length_bins"]],
+                [1, 1, 1, 1],
+            )
+            self.assertEqual(len({row["source_cluster"] for row in first["records"]}), 4)
+            self.assertNotIn(99, {row["source_cluster"] for row in first["records"]})
+            fasta_path = Path(first_summary["fasta_path"])
+            self.assertEqual(fasta_path.read_text(encoding="ascii").count(">"), 4)
+
+    def test_source_with_valid_test_overlap_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset = write_benchmark_dataset(root / "dataset")
+            (dataset / "test_clusters.txt").write_text("1\n99\n", encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "valid/test cluster files overlap"):
+                generate_benchmark_suite(dataset, root / "output", requested_count=4)
+
+    def test_truncated_list_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset = write_benchmark_dataset(root / "dataset")
+            lines = (dataset / "list.csv").read_text(encoding="utf-8").splitlines()
+            (dataset / "list.csv").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "row count does not match"):
+                generate_benchmark_suite(dataset, root / "output", requested_count=4)
+
+    def test_tampered_benchmark_sequence_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset = write_benchmark_dataset(root / "dataset")
+            summary = generate_benchmark_suite(dataset, root / "output", requested_count=4)
+            suite = read_json(summary["suite_path"])
+            suite["records"][0]["sequence"] += "A"
+            with self.assertRaisesRegex(ContractError, "sequence length mismatch"):
+                validate_benchmark_suite(suite)
+
+    def test_tampered_benchmark_fasta_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset = write_benchmark_dataset(root / "dataset")
+            summary = generate_benchmark_suite(dataset, root / "output", requested_count=4)
+            fasta_path = Path(summary["fasta_path"])
+            fasta_path.write_bytes(fasta_path.read_bytes() + b"A")
+            with self.assertRaisesRegex(ContractError, "byte size mismatch"):
+                verify_benchmark_suite_files(summary["suite_path"])
+
+    def test_card_machine_wrapper_is_bounded_and_valid_only(self):
+        wrapper = PROJECT_ROOT.parent / "scripts/prepare_2026_structure_benchmark.sh"
+        text = wrapper.read_text(encoding="utf-8")
+        self.assertIn('COUNT="${COUNT:-40}"', text)
+        self.assertIn('MAX_LENGTH="${MAX_LENGTH:-800}"', text)
+        self.assertIn("make-benchmark", text)
+        self.assertIn("verify-benchmark", text)
+        self.assertIn("split: valid", text)
+        self.assertNotIn("test_clusters.txt", text)
+
+    def test_runtime_inventory_is_read_only(self):
+        wrapper = PROJECT_ROOT.parent / "scripts/inspect_structure_runtime.sh"
+        text = wrapper.read_text(encoding="utf-8")
+        self.assertIn("inventory_only: true", text)
+        self.assertIn("inference_started: false", text)
+        self.assertNotIn("pip install", text)
+        self.assertNotIn("find /", text)
 
 
 class RunStoreTest(unittest.TestCase):

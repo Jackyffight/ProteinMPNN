@@ -1,132 +1,162 @@
-# Seven-Day Execution Plan
+# Seven-Day Engineering Execution Plan
 
-## Objective
+## Scope Decision
 
-Use the GPU window to produce a versioned candidate-and-structure-label dataset
-and one auditable target-to-CDS demonstration. The promoted ProteinMPNN Stage2a
-checkpoint is frozen for this sprint; another checkpoint is not the primary
-deliverable.
+The current team has engineering ownership but no research owner supplying a
+fusion target, domain boundaries, mutable residues, linker policy, or biological
+objective. Those inputs must not be guessed by an engineer or inferred by the
+pipeline.
 
-Assumption: four A100 GPUs are available. If fewer GPUs remain, preserve the gate
-order and reduce candidate count rather than skipping provenance or hard checks.
+This plan therefore separates two lanes:
+
+- **Lane A, active:** benchmark the infrastructure on fixed native PDB sequences.
+  This measures structure-model throughput, queue recovery, provenance, storage,
+  and generic ProteinMPNN behavior. It performs no target-specific optimization.
+- **Lane B, blocked:** run a fusion-protein-to-CDS design. This begins only after a
+  research owner supplies an approved target package.
+
+The promoted ProteinMPNN Stage2a checkpoint remains frozen. Another training run
+is not the default response to unused GPU capacity.
+
+## Engineering Inputs
+
+Lane A uses the validated post-2021 ProteinMPNN v1 dataset already present on the
+GPU server. The checked-in generator selects records with these fixed rules:
+
+- source split: `valid`; `test` is never sampled;
+- default count: 40;
+- sequence length: 50-800 residues;
+- deterministic seed: 42;
+- at most one sequence per cluster;
+- exact-sequence deduplication;
+- canonical amino acids only;
+- bounded length stratification.
+
+The 40 `valid` records are calibration/evaluation inputs. They must not be used
+to train a surrogate, tune structure-model parameters, or select another
+ProteinMPNN checkpoint.
+
+Generate it with:
+
+```bash
+scripts/prepare_2026_structure_benchmark.sh --dry-run
+scripts/prepare_2026_structure_benchmark.sh
+```
+
+This command reads metadata only. It does not open tar shards or start a GPU.
 
 ## Resource Policy
 
-- 70-75% of GPU-hours: structure fold/refold labels.
-- At most 5%: paired ProteinMPNN inference comparisons.
-- At most 5%: bounded mRNABERT/Evo 2 validation.
-- 5-10%: surrogate work and high-confidence recomputation.
-- At least 10%: recovery, failed shards, and final archival.
+- Do not allocate all four A100s before measuring one-GPU behavior.
+- Keep GPU 0 for the first adapter smoke and 40-record benchmark.
+- Use GPU 0-3 as independent workers only after lease recovery and output
+  checksums pass on the actual mounted filesystem.
+- Preserve at least 20% of the allocation for retries, debugging, recomputation,
+  and archival.
+- Do not manufacture a long run merely to consume a seven-day allocation.
 
-GPU 0-2 should become independent structure workers after the throughput gate.
-GPU 3 handles bounded integration jobs and then joins the structure queue.
+## Day 0: Freeze The Benchmark And Runtime
 
-## Day 0: Contracts And Frozen Assets
+1. Generate and validate the 40-record benchmark suite.
+2. Record its benchmark ID, suite SHA256, source manifest hashes, and FASTA hash.
+3. Inventory the structure predictor actually available on the GPU host.
+4. Pin its code revision, weight checksum, environment identity, and inference
+   parameters before writing the adapter.
+5. Preflight output storage and the archive destination.
 
-1. Register official, Stage-1, and Stage2a ProteinMPNN model hashes.
-2. Materialize at least one reviewed target package; three targets are preferred
-   if a target-held-out surrogate result is expected.
-3. Pin the structure oracle code revision, weight checksum, environment, and
-   inference parameters.
-4. Validate this project's schemas, run initialization, queue recovery, and
-   export path.
-5. Preflight storage and the continuous archive destination.
+Gate 0: proceed without a research target, but not without a validated benchmark
+suite and a reproducibly identifiable structure-model runtime.
 
-Gate 0: no GPU scale-up without an approved target, immutable/mutable residue
-policy, stable IDs, and pinned expert identities.
+## Day 1: One-GPU Structure Adapter
 
-## Day 1: Structure Adapter And Throughput
+1. Implement the structure adapter behind `ToolAdapter` for the pinned runtime.
+2. Fold one record from each length bucket on GPU 0.
+3. Record wall time, peak GPU memory, output bytes, confidence fields, and errors.
+4. Kill one attempt intentionally and verify lease expiry, retry, and attempt
+   history.
+5. Run all 40 records only after the four-record smoke succeeds.
 
-1. Implement the first structure adapter behind `ToolAdapter`.
-2. Run 30-100 fold/refold smoke cases spanning representative sequence lengths.
-3. Record wall time, peak GPU memory, failure rate, output bytes, and restart
-   behavior.
-4. Verify that an interrupted lease is reclaimed without losing attempt history.
+Gate 1: every input has one terminal or explicitly retryable result, artifacts
+match their declared SHA256 and size, and measured cost replaces guessed capacity.
 
-Gate 1: the queue is resumable, every output has provenance, and measured
-seconds-per-candidate determines the scale budget. Do not extrapolate candidate
-count before this measurement.
+## Days 2-3: Four-Worker Engineering Run
 
-## Day 2: Small Closed Loop
+1. Partition the same immutable suite across four independent workers.
+2. Verify that no work item is completed twice and no failed item disappears.
+3. Compare single-worker and four-worker throughput and storage growth.
+4. Where experimental coordinates are available, compute generic structural
+   agreement metrics without introducing target-specific pass thresholds.
+5. Run a small paired official-vs-Stage2a ProteinMPNN inference benchmark on fixed
+   PDB backbones only after the structure workflow is stable.
 
-1. Enumerate 100-500 domain-order and linker backbone candidates on CPU.
-2. Fold the initial architectures and retain a throughput-calibrated subset.
-3. Run paired constrained design with official `v_48_020`, promoted Stage 1, and
-   promoted Stage2a using identical backbones, constraints, seeds, and
-   temperatures.
-4. Reject every immutable-residue violation before refold.
-5. Refold candidates and compute global, per-domain, junction, interface, clash,
-   and compactness metrics where applicable.
+Gate 2: scaling is accepted only if aggregate throughput improves, queue behavior
+remains correct, and outputs stay provenance-complete.
 
-Gate 2: immutable violations are zero, outputs are restartable, and structure
-metrics differentiate candidates. The default ProteinMPNN expert is selected by
-fusion-task refold outcomes, not validation NLL alone.
+## Days 4-5: Conditional Generic Label Expansion
 
-## Days 3-4: First Label Wave
+Expand beyond 40 records only when Gate 2 shows that the labels are useful and the
+storage budget is understood. A larger training suite must come from `train`, be a
+new versioned artifact, retain cluster-aware separation, and keep both the fixed
+40-record `valid` benchmark and held-out `test` records out of training.
 
-1. Run independent structure workers over atomic candidate shards.
-2. Retain scalar metrics and compressed structures for every candidate.
-3. Retain large PAE arrays, logits, and embeddings only for top, uncertain, or
-   diagnostic candidates until storage cost is measured.
-4. Archive completed immutable shards continuously.
-5. Record failures and bounded retries; never silently drop candidates.
+Possible engineering outputs are native-sequence fold confidence, experimental
+structure agreement, ProteinMPNN sequence recovery, bounded redesign/refold
+comparisons, runtime, memory, and failure labels. They are generic model and
+systems benchmarks, not fusion-target evidence.
 
-The candidate budget is:
+Fit a Ridge/GBDT surrogate only on a train-derived suite with enough independent
+clusters. Evaluate on untouched clusters or families, never by random candidate
+row. A negative result is acceptable.
 
-```text
-floor(available worker-seconds / measured mean seconds per candidate)
-```
+## Day 6: Translation-Preservation Plumbing
 
-Apply an explicit recovery reserve before creating the queue.
+1. Generate a small synonymous CDS set for selected benchmark proteins.
+2. Require exact translation back to the fixed source protein.
+3. Compute GC, codon-frequency, repeat, and forbidden-motif rule features.
+4. Exercise mRNABERT adapters only as separate recorded scores.
+5. Make no claim that a benchmark CDS is a preferred biological construct.
 
-## Day 5: Surrogate And Active Selection
-
-1. Fit honest Ridge/GBDT feature baselines before a neural surrogate.
-2. Split by target or protein family, never by random candidate row.
-3. Compare refold-pass enrichment against diverse random selection.
-4. Send both high-scoring and high-uncertainty candidates into a second oracle
-   wave.
-
-Gate 3: retain a surrogate only if it enriches expensive passes on unseen
-targets. With only one target, report an in-target heuristic and do not claim
-generalization.
-
-## Day 6: mRNA Layer
-
-1. Generate synonymous CDS candidates for structurally retained proteins.
-2. Require exact translated-protein equality.
-3. Compute GC, CAI, codon-frequency, k-mer, repeat, and forbidden-motif features.
-4. Record public and internal mRNABERT scores as separate components; the rule
-   baseline remains primary until a learned scorer wins on held-out labels.
-5. Produce a Pareto shortlist without collapsing structure and mRNA evidence into
-   one opaque score.
+This step validates contracts and software integration; it is not research target
+selection or wet-lab prioritization.
 
 ## Day 7: Recompute And Archive
 
-1. Stop launching jobs that cannot finish at least 12 hours before allocation
-   expiry.
-2. Independently recompute final candidates at the approved confidence level.
-3. Export queue tables, candidate records, checksums, cost measurements, and
-   explicit rejection reasons.
-4. Write a decision report including negative results and unresolved failures.
-5. Verify the archive from a second location.
+1. Stop launching jobs that cannot finish at least 12 hours before expiry.
+2. Recompute a fixed subset to measure determinism.
+3. Export queue tables, attempt history, benchmark suite, artifacts, checksums,
+   runtime, memory, and failure summaries.
+4. Verify the archive from a second location.
+5. Write down unsupported model environments and negative results.
 
-## Exit Criteria
+## Lane A Exit Criteria
 
-- At least one approved target reaches a ranked CDS shortlist.
-- Immutable-residue and translation-preservation checks pass for every retained
-  candidate.
-- Fold/refold cost per 1,000 candidates is measured.
-- A resumable, provenance-complete label dataset is archived.
-- Official, Stage-1, and Stage2a ProteinMPNN experts receive a paired fusion-task
-  comparison.
-- A surrogate result or an explicit negative result is recorded.
-- No structure proxy is described as wet-lab efficacy evidence.
+- A deterministic, test-excluding benchmark suite is archived.
+- Fold cost, latency, peak memory, failure rate, and bytes per record are measured.
+- The queue survives an interrupted worker and preserves attempt history.
+- Four-worker scaling is measured rather than assumed.
+- Official and Stage2a checkpoints have a bounded paired engineering comparison,
+  if the structure adapter is available.
+- Every emitted CDS, if that plumbing is exercised, translates exactly to its
+  source protein.
+- No proxy metric is described as wet-lab efficacy evidence.
+
+## Activating Lane B
+
+Lane B is not an engineering TODO. It activates only when a named research owner
+provides and approves:
+
+- domain sequences and boundaries;
+- immutable and explicitly mutable residues;
+- allowed domain order and linker policy;
+- oligomeric state, length, expression, and construct constraints;
+- prohibited modifications and safety review.
+
+Only then should the pipeline create fusion candidates, apply constrained
+ProteinMPNN design, rank target-specific refolds, or produce a design shortlist.
 
 ## Conditional Training
 
-Do not extend Stage2a automatically. Independent training seeds may use spare
-V100 capacity for validation-only stability analysis, but the opened held-out
-test set cannot be reused to select a replacement release. A future replay
-mixture or full retraining campaign requires a new predeclared holdout and a
-measured fusion-task failure.
+Do not extend Stage2a automatically. The opened held-out test set cannot be reused
+to select another release. A future replay mixture or full retraining campaign
+requires a new predeclared holdout and a measured failure on the engineering or
+research task that the training is intended to fix.

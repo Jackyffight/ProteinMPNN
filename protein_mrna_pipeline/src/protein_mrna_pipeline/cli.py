@@ -8,15 +8,17 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from .benchmark import generate_benchmark_suite, verify_benchmark_suite_files
 from .contracts import (
     ContractError,
+    SCHEMA_FILES,
     read_json,
     validate_document,
 )
 from .run_store import RunStore, initialize_run
 
 
-KINDS = ("target", "work-item", "tool-result", "candidate", "run-manifest")
+KINDS = tuple(SCHEMA_FILES)
 
 
 def print_json(value: object) -> None:
@@ -37,6 +39,25 @@ def command_init_run(args: argparse.Namespace) -> int:
         allow_unreviewed=args.allow_unreviewed,
     )
     print_json(manifest)
+    return 0
+
+
+def command_make_benchmark(args: argparse.Namespace) -> int:
+    summary = generate_benchmark_suite(
+        args.dataset_dir,
+        args.output_dir,
+        requested_count=args.count,
+        seed=args.seed,
+        min_length=args.min_length,
+        max_length=args.max_length,
+        length_bin_count=args.length_bins,
+    )
+    print_json(summary)
+    return 0
+
+
+def command_verify_benchmark(args: argparse.Namespace) -> int:
+    print_json(verify_benchmark_suite_files(args.suite))
     return 0
 
 
@@ -105,6 +126,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="engineering-only override; denied targets remain forbidden",
     )
     init_parser.set_defaults(handler=command_init_run)
+
+    benchmark_parser = subparsers.add_parser(
+        "make-benchmark",
+        help="select a bounded engineering benchmark from the PDB valid split",
+    )
+    benchmark_parser.add_argument("--dataset-dir", required=True)
+    benchmark_parser.add_argument("--output-dir", required=True)
+    benchmark_parser.add_argument("--count", type=int, default=40)
+    benchmark_parser.add_argument("--seed", type=int, default=42)
+    benchmark_parser.add_argument("--min-length", type=int, default=50)
+    benchmark_parser.add_argument("--max-length", type=int, default=800)
+    benchmark_parser.add_argument("--length-bins", type=int, default=4)
+    benchmark_parser.set_defaults(handler=command_make_benchmark)
+
+    verify_benchmark_parser = subparsers.add_parser(
+        "verify-benchmark",
+        help="verify a benchmark suite and its companion FASTA",
+    )
+    verify_benchmark_parser.add_argument("--suite", required=True)
+    verify_benchmark_parser.set_defaults(handler=command_verify_benchmark)
 
     enqueue_parser = subparsers.add_parser("enqueue", help="enqueue one work item")
     enqueue_parser.add_argument("--run-dir", required=True)

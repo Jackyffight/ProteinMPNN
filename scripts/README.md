@@ -41,6 +41,22 @@ scripts/sync_latest_pdb_assemblies.sh --dry-run
 scripts/inspect_dataset_version.sh /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn_custom/proteinmpnn_pdb_latest_YYYYMMDD
 ```
 
+Prepare the research-independent structure throughput benchmark:
+
+```bash
+scripts/prepare_2026_structure_benchmark.sh --dry-run
+scripts/prepare_2026_structure_benchmark.sh
+scripts/inspect_structure_runtime.sh
+```
+
+It reads only the validated 2026 v1 metadata, selects 40 cluster-unique native
+sequences from `valid`, writes a checksummed suite plus FASTA, and does not start
+a GPU job. A real fusion target is a separate research input and is not required
+for this engineering preflight.
+`inspect_structure_runtime.sh` is read-only: it reports GPUs, relevant Python
+packages, candidate executables, and cache roots without installing or running a
+structure model.
+
 For A100:
 
 ```bash

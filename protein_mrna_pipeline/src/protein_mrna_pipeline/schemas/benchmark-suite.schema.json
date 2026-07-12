@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local/protein-mrna-pipeline/benchmark-suite.schema.json",
+  "title": "Protein-to-mRNA Engineering Benchmark Suite",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "benchmark_id",
+    "created_at_utc",
+    "purpose",
+    "source",
+    "selection",
+    "records",
+    "fasta",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "protein-mrna.benchmark-suite.v1"},
+    "benchmark_id": {"$ref": "#/$defs/id"},
+    "created_at_utc": {"type": "string", "format": "date-time"},
+    "purpose": {"const": "engineering_structure_throughput"},
+    "source": {"$ref": "#/$defs/source"},
+    "selection": {"$ref": "#/$defs/selection"},
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {"$ref": "#/$defs/record"}
+    },
+    "fasta": {"$ref": "#/$defs/file"},
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "dataset_id",
+        "dataset_path",
+        "dataset_format",
+        "record_count",
+        "split",
+        "manifest_sha256",
+        "validation_sha256",
+        "list_sha256",
+        "split_sha256",
+        "test_split_sha256"
+      ],
+      "properties": {
+        "dataset_id": {"$ref": "#/$defs/id"},
+        "dataset_path": {"type": "string", "minLength": 1},
+        "dataset_format": {"const": "proteinmpnn.tar_shard.v2"},
+        "record_count": {"type": "integer", "minimum": 1},
+        "split": {"const": "valid"},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "validation_sha256": {"$ref": "#/$defs/sha256"},
+        "list_sha256": {"$ref": "#/$defs/sha256"},
+        "split_sha256": {"$ref": "#/$defs/sha256"},
+        "test_split_sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "length_bin": {
+      "type": "object",
+      "required": ["label", "min_length", "max_length", "eligible", "selected"],
+      "properties": {
+        "label": {"$ref": "#/$defs/id"},
+        "min_length": {"type": "integer", "minimum": 1},
+        "max_length": {"type": "integer", "minimum": 1},
+        "eligible": {"type": "integer", "minimum": 0},
+        "selected": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "source_counts": {
+      "type": "object",
+      "required": [
+        "list_rows",
+        "valid_split_rows",
+        "length_eligible_rows",
+        "canonical_rows",
+        "unique_cluster_sequence_rows"
+      ],
+      "properties": {
+        "list_rows": {"type": "integer", "minimum": 0},
+        "valid_split_rows": {"type": "integer", "minimum": 0},
+        "length_eligible_rows": {"type": "integer", "minimum": 0},
+        "canonical_rows": {"type": "integer", "minimum": 0},
+        "unique_cluster_sequence_rows": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "selection": {
+      "type": "object",
+      "required": [
+        "seed",
+        "requested_count",
+        "selected_count",
+        "min_length",
+        "max_length",
+        "canonical_amino_acids_only",
+        "one_record_per_cluster",
+        "exact_sequence_unique",
+        "length_bins",
+        "source_counts"
+      ],
+      "properties": {
+        "seed": {"type": "integer", "minimum": 0},
+        "requested_count": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "selected_count": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "min_length": {"type": "integer", "minimum": 1},
+        "max_length": {"type": "integer", "minimum": 1},
+        "canonical_amino_acids_only": {"const": true},
+        "one_record_per_cluster": {"const": true},
+        "exact_sequence_unique": {"const": true},
+        "length_bins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {"$ref": "#/$defs/length_bin"}
+        },
+        "source_counts": {"$ref": "#/$defs/source_counts"}
+      },
+      "additionalProperties": false
+    },
+    "record": {
+      "type": "object",
+      "required": [
+        "benchmark_record_id",
+        "source_chain_id",
+        "source_cluster",
+        "source_sequence_hash",
+        "deposition_date",
+        "resolution",
+        "length_bin",
+        "length",
+        "sequence_sha256",
+        "sequence"
+      ],
+      "properties": {
+        "benchmark_record_id": {"$ref": "#/$defs/id"},
+        "source_chain_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source_cluster": {"type": "integer", "minimum": 0},
+        "source_sequence_hash": {"type": "string", "minLength": 1},
+        "deposition_date": {"type": "string", "format": "date"},
+        "resolution": {
+          "oneOf": [
+            {"type": "number", "exclusiveMinimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "length_bin": {"$ref": "#/$defs/id"},
+        "length": {"type": "integer", "minimum": 1},
+        "sequence_sha256": {"$ref": "#/$defs/sha256"},
+        "sequence": {
+          "type": "string",
+          "pattern": "^[ACDEFGHIKLMNPQRSTVWY]+$",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "file": {
+      "type": "object",
+      "required": ["path", "sha256", "bytes", "records"],
+      "properties": {
+        "path": {"const": "sequences.fasta"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "records": {"type": "integer", "minimum": 1, "maximum": 1000}
+      },
+      "additionalProperties": false
+    }
+  }
+}
