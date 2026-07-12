@@ -14,8 +14,9 @@ class CheckpointUtilsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         sys.path.insert(0, str(ROOT / "repo/training"))
-        global checkpoint_utils, torch
+        global checkpoint_utils, model_utils, torch
         import checkpoint_utils
+        import model_utils
         import torch
 
     @classmethod
@@ -50,3 +51,19 @@ class CheckpointUtilsTest(unittest.TestCase):
     def test_neighbor_mismatch_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "num_edges=48"):
             checkpoint_utils.validate_num_edges({"num_edges": 48}, 32)
+
+    def test_noam_schedule_accepts_a_conservative_factor_and_warmup(self):
+        parameter = torch.nn.Parameter(torch.ones(1))
+        optimizer = model_utils.get_std_opt(
+            [parameter],
+            d_model=128,
+            step=0,
+            factor=0.25,
+            warmup=1000,
+        )
+
+        optimizer.step()
+
+        self.assertEqual(optimizer.factor, 0.25)
+        self.assertEqual(optimizer.warmup, 1000)
+        self.assertAlmostEqual(optimizer.param_groups[0]["lr"], optimizer.rate(1))

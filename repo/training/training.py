@@ -62,6 +62,10 @@ def main(args):
         raise ValueError("--prefetch_workers must be positive")
     if args.prefetch_batches < 1:
         raise ValueError("--prefetch_batches must be positive")
+    if args.lr_factor <= 0.0:
+        raise ValueError("--lr_factor must be positive")
+    if args.warmup_steps < 1:
+        raise ValueError("--warmup_steps must be positive")
 
     device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
     if args.seed >= 0:
@@ -171,12 +175,30 @@ def main(args):
         total_step = checkpoint['step']
         epoch = checkpoint['epoch']
         best_validation_loss = checkpoint.get('best_validation_loss', float('inf'))
+        checkpoint_schedule = checkpoint.get('optimizer_schedule')
+        if checkpoint_schedule is not None:
+            if (
+                float(checkpoint_schedule['factor']) != args.lr_factor
+                or int(checkpoint_schedule['warmup_steps']) != args.warmup_steps
+            ):
+                raise ValueError(
+                    "resume optimizer schedule mismatch: "
+                    f"checkpoint={checkpoint_schedule} "
+                    f"requested={{'factor': {args.lr_factor}, "
+                    f"'warmup_steps': {args.warmup_steps}}}"
+                )
     else:
         total_step = 0
         epoch = 0
         best_validation_loss = float('inf')
 
-    optimizer = get_std_opt(model.parameters(), args.hidden_dim, total_step)
+    optimizer = get_std_opt(
+        model.parameters(),
+        args.hidden_dim,
+        total_step,
+        factor=args.lr_factor,
+        warmup=args.warmup_steps,
+    )
 
 
     if resume_path:
@@ -210,6 +232,11 @@ def main(args):
             "num_neighbors": args.num_neighbors,
             "dropout": args.dropout,
             "backbone_noise": args.backbone_noise,
+        },
+        "optimizer": {
+            "name": "adam_noam",
+            "factor": args.lr_factor,
+            "warmup_steps": args.warmup_steps,
         },
         "runtime": {
             "python": sys.version,
@@ -347,6 +374,7 @@ def main(args):
                 "num_examples_per_epoch": int(args.num_examples_per_epoch),
                 "batch_tokens": int(args.batch_size),
                 "max_protein_length": int(args.max_protein_length),
+                "learning_rate": float(optimizer._rate),
             }
             is_best = validation_loss < best_validation_loss
 
@@ -379,6 +407,7 @@ def main(args):
                         'model_state_dict': model.state_dict(),
                         'optimizer_state_dict': optimizer.optimizer.state_dict(),
                         'best_validation_loss': min(best_validation_loss, validation_loss),
+                        'optimizer_schedule': manifest["optimizer"],
                         'config': manifest["model"],
                         'metrics': epoch_metrics,
                         }
@@ -432,6 +461,8 @@ if __name__ == "__main__":
     argparser.add_argument("--prefetch_batches", type=int, default=1, help="number of prefetched train/validation structure batches")
     argparser.add_argument("--tf32", type=str2bool, default=True, help="allow TF32 matmul on Ampere and newer GPUs")
     argparser.add_argument("--save_best", type=str2bool, default=True, help="write model_weights/best.pt when validation improves")
+    argparser.add_argument("--lr_factor", type=float, default=2.0, help="Noam learning-rate scale factor")
+    argparser.add_argument("--warmup_steps", type=int, default=4000, help="Noam learning-rate warmup steps")
  
     args = argparser.parse_args()    
     main(args)   

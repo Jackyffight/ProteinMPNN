@@ -56,12 +56,22 @@ def require_resume_state(checkpoint, checkpoint_path):
 
 
 def checkpoint_metadata(checkpoint):
+    optimizer_schedule = checkpoint.get("optimizer_schedule")
+    if isinstance(optimizer_schedule, dict):
+        optimizer_schedule = {
+            "name": _json_scalar(optimizer_schedule.get("name")),
+            "factor": _json_scalar(optimizer_schedule.get("factor")),
+            "warmup_steps": _json_scalar(optimizer_schedule.get("warmup_steps")),
+        }
+    else:
+        optimizer_schedule = None
     return {
         "num_edges": _json_scalar(checkpoint.get("num_edges")),
         "noise_level": _json_scalar(checkpoint.get("noise_level")),
         "step": _json_scalar(checkpoint.get("step")),
         "epoch": _json_scalar(checkpoint.get("epoch")),
         "has_optimizer_state": "optimizer_state_dict" in checkpoint,
+        "optimizer_schedule": optimizer_schedule,
     }
 
 

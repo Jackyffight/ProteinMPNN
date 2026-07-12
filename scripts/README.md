@@ -99,6 +99,20 @@ peak RSS, and validates all generated payloads. Its default output is
 `processed/proteinmpnn_tar_shards_stage2a_v1`. Do not start stage-two training
 until that directory contains `validation.json` with `"status": "ok"`.
 
+After syncing the validated artifact to the GPU workspace, use:
+
+```bash
+scripts/validate_2026_stage2a_dataset.sh
+DEVICES=0 scripts/run_2026_stage2a_pilot_a100.sh --dry-run
+DEVICES=0 scripts/run_2026_stage2a_pilot_a100.sh
+scripts/evaluate_2026_stage2a_checkpoints.sh
+```
+
+The pilot starts from the promoted stage-1 weights with a conservative Noam
+factor and never restores the stage-1 optimizer. The checkpoint gate requires
+stage2a validation improvement while bounding v1 validation regression. See
+`STAGE2A_RUNBOOK.md` for the formal run and one-shot test sequence.
+
 The paired and multi-seed stage-1 scripts now use complete validation records only.
 The multi-seed script measures evaluation sensitivity; promotion across training
 seeds still requires independently trained runs.

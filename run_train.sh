@@ -36,6 +36,8 @@ LOADER_WORKERS="${LOADER_WORKERS:-0}"
 PREFETCH_WORKERS="${PREFETCH_WORKERS:-1}"
 PREFETCH_BATCHES="${PREFETCH_BATCHES:-1}"
 GRADIENT_NORM="${GRADIENT_NORM:--1.0}"
+LR_FACTOR="${LR_FACTOR:-2.0}"
+WARMUP_STEPS="${WARMUP_STEPS:-4000}"
 MIXED_PRECISION="${MIXED_PRECISION:-True}"
 TF32="${TF32:-True}"
 SAVE_BEST="${SAVE_BEST:-True}"
@@ -80,6 +82,8 @@ Training args:
   --prefetch-workers <n>             Spawned ProcessPool workers. Safe default: 1.
   --prefetch-batches <n>             Prefetched train/valid batches. Safe default: 1.
   --gradient-norm <float>            Clip norm; negative disables. Default: -1.0.
+  --lr-factor <float>                Noam learning-rate factor. Default: 2.0.
+  --warmup-steps <n>                 Noam warmup steps. Default: 4000.
   --mixed-precision / --no-mixed-precision
   --tf32 / --no-tf32
   --debug / --no-debug
@@ -119,6 +123,8 @@ while [ $# -gt 0 ]; do
     --prefetch-workers|--prefetch_workers) PREFETCH_WORKERS="$2"; shift 2 ;;
     --prefetch-batches|--prefetch_batches) PREFETCH_BATCHES="$2"; shift 2 ;;
     --gradient-norm|--gradient_norm) GRADIENT_NORM="$2"; shift 2 ;;
+    --lr-factor|--lr_factor) LR_FACTOR="$2"; shift 2 ;;
+    --warmup-steps|--warmup_steps) WARMUP_STEPS="$2"; shift 2 ;;
     --mixed-precision|--mixed_precision) MIXED_PRECISION=True; shift ;;
     --no-mixed-precision|--no_mixed_precision) MIXED_PRECISION=False; shift ;;
     --tf32) TF32=True; shift ;;
@@ -288,6 +294,8 @@ echo "encoder_layers: $ENCODER_LAYERS"
 echo "decoder_layers: $DECODER_LAYERS"
 echo "num_neighbors: $NUM_NEIGHBORS"
 echo "backbone_noise: $BACKBONE_NOISE"
+echo "lr_factor: $LR_FACTOR"
+echo "warmup_steps: $WARMUP_STEPS"
 echo "seed: $SEED"
 echo "loader_workers: $LOADER_WORKERS"
 echo "prefetch_workers: $PREFETCH_WORKERS"
@@ -314,6 +322,8 @@ exec "$PYTHON_BIN" training.py \
   --rescut "$RESCUT" \
   --debug "$DEBUG" \
   --gradient_norm "$GRADIENT_NORM" \
+  --lr_factor "$LR_FACTOR" \
+  --warmup_steps "$WARMUP_STEPS" \
   --mixed_precision "$MIXED_PRECISION" \
   --seed "$SEED" \
   --num_loader_workers "$LOADER_WORKERS" \

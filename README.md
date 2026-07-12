@@ -90,6 +90,8 @@ dataset with `scripts/build_pdb_2026_oversized_crops.sh`. It preserves complete
 target chains, inherits v1 splits, uses one recycling parser worker, and runs the
 same exhaustive tar/payload validator. Targets above 2,000 residues and raw
 files above 50 MiB remain separate later inputs; see `DATASET_VERSIONS.md`.
+The post-build sync, pilot, dual-validation gate, and formal training commands
+are in `STAGE2A_RUNBOOK.md`.
 
 To download or rebuild the upstream reference archive from HTTP range parts:
 

@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,8 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("--dataset_format", launcher)
         self.assertIn("--prefetch_workers", launcher)
         self.assertIn("--save_best", launcher)
+        self.assertIn("--lr_factor", launcher)
+        self.assertIn("--warmup_steps", launcher)
         self.assertIn("run_name", launcher.lower())
 
     def test_launcher_separates_weight_initialization_from_resume(self):
@@ -250,6 +253,135 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("sha256sum", stage_script)
         self.assertIn("pdb_2021aug02", stage_script)
 
+    def test_stage2a_launcher_is_guarded_and_dry_runnable(self):
+        pilot_path = ROOT / "scripts/run_2026_stage2a_pilot_a100.sh"
+        full_path = ROOT / "scripts/run_2026_stage2a_a100.sh"
+        valid_gate_path = ROOT / "scripts/evaluate_2026_stage2a_checkpoints.sh"
+        test_gate_path = ROOT / "scripts/evaluate_2026_stage2a_selected_test.sh"
+        pilot = pilot_path.read_text(encoding="utf-8")
+        full = full_path.read_text(encoding="utf-8")
+        valid_gate = valid_gate_path.read_text(encoding="utf-8")
+        test_gate = test_gate_path.read_text(encoding="utf-8")
+
+        self.assertIn("structure_with_target_chain_ids_spatial_crop", pilot)
+        self.assertIn("full_target_nearest_chain_windows_v1", pilot)
+        self.assertIn("weight_initialization", pilot)
+        self.assertIn("restore_optimizer", pilot)
+        self.assertIn('LR_FACTOR="${LR_FACTOR:-0.25}"', pilot)
+        self.assertIn('NUM_EPOCHS="${NUM_EPOCHS:-2}"', full)
+        self.assertIn("stage2a_valid_nll_with_v1_regression_gate", valid_gate)
+        self.assertIn("MAX_V1_NLL_REGRESSION", valid_gate)
+        self.assertIn("one-shot", test_gate)
+        self.assertIn("461", test_gate)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "stage2a"
+            shards_dir = data_dir / "shards"
+            shards_dir.mkdir(parents=True)
+            for filename in (
+                "build_manifest.json",
+                "list.csv",
+                "index.jsonl",
+                "records.jsonl",
+                "valid_clusters.txt",
+                "test_clusters.txt",
+            ):
+                (data_dir / filename).write_text("fixture\n", encoding="utf-8")
+            (shards_dir / "shard_000000.tar").touch()
+            (data_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "format": "proteinmpnn.tar_shard.v2",
+                        "payload_schema": "structure_with_target_chain_ids_spatial_crop",
+                        "crop_policy": "full_target_nearest_chain_windows_v1",
+                        "record_count": 1,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (data_dir / "validation.json").write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "records": 1,
+                        "payloads_checked": 1,
+                        "shards_checked": 1,
+                        "exact_sequence_split_leaks": 0,
+                        "pdb_split_leaks": 0,
+                        "reference_pdb_overlaps": 0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            checkpoint = root / "model.pt"
+            checkpoint.write_bytes(b"stage1 checkpoint fixture")
+            checksum = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+            promotion = root / "promotion.json"
+            promotion.write_text(
+                json.dumps(
+                    {
+                        "schema": "proteinmpnn.promoted_checkpoint.v1",
+                        "model_id": "proteinmpnn-2026-v1-stage1",
+                        "checkpoint": {"sha256": checksum},
+                        "intended_use": {
+                            "checkpoint_mode": "weight_initialization",
+                            "restore_optimizer": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env.update(
+                {
+                    "DATA_DIR": str(data_dir),
+                    "INIT_CHECKPOINT": str(checkpoint),
+                    "PROMOTION_MANIFEST": str(promotion),
+                    "OUTPUT_DIR": str(root / "pilot-output"),
+                    "RUN_NAME": "stage2a-contract-pilot",
+                    "PYTHON_BIN": sys.executable,
+                    "DEVICES": "0",
+                }
+            )
+            result = subprocess.run(
+                [str(pilot_path), "--dry-run"],
+                cwd=ROOT,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertIn("--init-checkpoint", result.stdout)
+            self.assertNotIn("--resume", result.stdout)
+            self.assertIn("--lr-factor 0.25", result.stdout)
+            self.assertIn("--num-examples 1000", result.stdout)
+
+            full_env = env.copy()
+            full_env["OUTPUT_DIR"] = str(root / "full-output")
+            full_result = subprocess.run(
+                [str(full_path), "--dry-run"],
+                cwd=ROOT,
+                env=full_env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertIn("--num-epochs 2", full_result.stdout)
+            self.assertIn("--num-examples 1000000", full_result.stdout)
+
+            env["DEVICES"] = "0,1"
+            rejected = subprocess.run(
+                [str(pilot_path), "--dry-run"],
+                cwd=ROOT,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("single-GPU", rejected.stderr)
+
     def test_latest_pdb_dataset_track_is_scaffolded(self):
         sync_script = (ROOT / "scripts/sync_latest_pdb_assemblies.sh").read_text(encoding="utf-8")
         build_script = (ROOT / "scripts/build_pdb_2026_dataset.sh").read_text(encoding="utf-8")
@@ -341,6 +473,7 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("PROTEINMPNN_DATA_ROOT", env_script)
         self.assertIn("PROTEINMPNN_TAR_SHARD_DATA_DIR", env_script)
         self.assertIn("PROTEINMPNN_V1_DATA_DIR", env_script)
+        self.assertIn("PROTEINMPNN_STAGE2A_DATA_DIR", env_script)
         self.assertIn("proteinmpnn_tar_shards_v1", env_script)
         self.assertIn("proteinmpnn_tar_shards", env_script)
         self.assertIn("PROTEINMPNN_OUTPUT_ROOT", env_script)
@@ -366,6 +499,7 @@ class TrainingContractTest(unittest.TestCase):
         self.assertIn("--num_loader_workers", training)
         self.assertIn("--prefetch_workers", training)
         self.assertIn("--tf32", training)
+        self.assertIn("optimizer_schedule", training)
 
     def test_official_checkpoint_evaluator_uses_training_data_path(self):
         evaluator = (ROOT / "repo/training/evaluate_checkpoint.py").read_text(encoding="utf-8")

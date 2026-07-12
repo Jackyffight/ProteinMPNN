@@ -464,18 +464,17 @@ def validate_reference_split_inheritance(
         recorded_reference.resolve(),
     )
     expected_hashes = build_manifest.get("reference_files_sha256", {})
-    required_files = (
+    immutable_files = (
         "manifest.json",
-        "validation.json",
         "list.csv",
         "valid_clusters.txt",
         "test_clusters.txt",
     )
     require(
-        set(expected_hashes) == set(required_files),
+        set(immutable_files).issubset(expected_hashes),
         "missing reference dataset checksums",
     )
-    for filename in required_files:
+    for filename in immutable_files:
         path = reference_dataset / filename
         require(path.is_file(), f"missing reference dataset file: {path}")
         require(
@@ -483,11 +482,33 @@ def validate_reference_split_inheritance(
             f"reference dataset checksum mismatch: {filename}",
         )
 
+    reference_validation_path = reference_dataset / "validation.json"
+    require(
+        reference_validation_path.is_file(),
+        f"missing reference dataset file: {reference_validation_path}",
+    )
+    reference_manifest = json.loads(
+        (reference_dataset / "manifest.json").read_text(encoding="utf-8")
+    )
+    reference_validation = json.loads(
+        reference_validation_path.read_text(encoding="utf-8")
+    )
+    reference_record_count = int(reference_manifest.get("record_count", 0))
+    require(reference_validation.get("status") == "ok", "reference validation is not ok")
+    require(
+        int(reference_validation.get("payloads_checked", 0)) == reference_record_count,
+        "reference validation does not cover every payload",
+    )
+
     with (reference_dataset / "list.csv").open(newline="", encoding="utf-8") as handle:
         reference_rows = list(csv.DictReader(handle))
     reference_valid = read_cluster_ids(reference_dataset / "valid_clusters.txt")
     reference_test = read_cluster_ids(reference_dataset / "test_clusters.txt")
     require(reference_rows, "reference dataset contains no targets")
+    require(
+        len(reference_rows) == reference_record_count,
+        "reference manifest/list record counts differ",
+    )
     require(not reference_valid.intersection(reference_test), "reference valid/test overlap")
 
     reference_cluster_splits = defaultdict(set)
