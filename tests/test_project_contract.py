@@ -398,6 +398,9 @@ class LauncherContractTest(unittest.TestCase):
         oversized_builder = (
             ROOT / "repo/training/build_pdb_oversized_crop_tar_dataset.py"
         ).read_text(encoding="utf-8")
+        oversized_finalizer = (
+            ROOT / "repo/training/finalize_pdb_oversized_crop_tar_dataset.py"
+        ).read_text(encoding="utf-8")
         versions_doc = (ROOT / "DATASET_VERSIONS.md").read_text(encoding="utf-8")
 
         self.assertIn("files.wwpdb.org/pub/pdb/data/assemblies/mmCIF/divided", sync_script)
@@ -438,6 +441,8 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("spatial_crop", oversized_builder)
         self.assertIn("reference_files_sha256", oversized_builder)
         self.assertIn("Reference validation does not cover every v1 payload", oversized_builder)
+        self.assertIn("reference_split_conflict_component", oversized_builder)
+        self.assertIn("finalize_completed_shards_after_split_conflict", oversized_finalizer)
         self.assertIn("dataset_format", (ROOT / "repo/training/training.py").read_text(encoding="utf-8"))
         self.assertIn("proteinmpnn_pdb_latest_<YYYYMMDD>", versions_doc)
         self.assertIn("Upstream Reference Baseline", versions_doc)

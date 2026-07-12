@@ -112,33 +112,81 @@ def split_name(cluster: int, valid: set[int], test: set[int]) -> str:
     return "train"
 
 
-def inherit_reference_splits(rows: list[dict], reference_dataset: Path) -> dict:
+def inherit_reference_splits(
+    rows: list[dict], reference_dataset: Path
+) -> tuple[dict, list[dict]]:
     reference_rows = read_csv_rows(reference_dataset / "list.csv")
     reference_valid = read_cluster_ids(reference_dataset / "valid_clusters.txt")
     reference_test = read_cluster_ids(reference_dataset / "test_clusters.txt")
     if reference_valid & reference_test:
         raise ValueError("reference valid/test clusters overlap")
 
-    combined_reference = []
-    for row in reference_rows:
-        copied = dict(row)
-        copied["_reference_split"] = split_name(
-            int(row["CLUSTER"]), reference_valid, reference_test
-        )
-        combined_reference.append(copied)
-    combined = combined_reference + rows
-    reconciliation = base.reconcile_exact_sequence_clusters(combined)
-
-    reference_splits_by_cluster = defaultdict(set)
-    for row in combined_reference:
-        reference_splits_by_cluster[int(row["CLUSTER"])].add(row["_reference_split"])
-    conflicts = {
-        cluster: splits
-        for cluster, splits in reference_splits_by_cluster.items()
-        if len(splits) > 1
+    original_cluster_by_chain = {
+        row["CHAINID"]: str(row["CLUSTER"])
+        for row in rows
     }
-    if conflicts:
-        raise ValueError(f"reference split conflict after reconciliation: {conflicts}")
+    remaining_chain_ids = set(original_cluster_by_chain)
+    quarantined = []
+    conflict_components = 0
+    while True:
+        combined_reference = []
+        for row in reference_rows:
+            copied = dict(row)
+            copied["_reference_split"] = split_name(
+                int(row["CLUSTER"]), reference_valid, reference_test
+            )
+            combined_reference.append(copied)
+        stage_copies = []
+        for row in rows:
+            if row["CHAINID"] not in remaining_chain_ids:
+                continue
+            copied = dict(row)
+            copied["CLUSTER"] = original_cluster_by_chain[row["CHAINID"]]
+            stage_copies.append(copied)
+        combined = combined_reference + stage_copies
+        reconciliation = base.reconcile_exact_sequence_clusters(combined)
+
+        reference_splits_by_cluster = defaultdict(set)
+        for row in combined_reference:
+            reference_splits_by_cluster[int(row["CLUSTER"])].add(
+                row["_reference_split"]
+            )
+        conflicts = {
+            cluster: splits
+            for cluster, splits in reference_splits_by_cluster.items()
+            if len(splits) > 1
+        }
+        if not conflicts:
+            reconciled_cluster_by_chain = {
+                row["CHAINID"]: row["CLUSTER"] for row in stage_copies
+            }
+            break
+
+        conflicting_stage_rows = [
+            row for row in stage_copies if int(row["CLUSTER"]) in conflicts
+        ]
+        if not conflicting_stage_rows:
+            raise ValueError(
+                f"reference dataset contains an internal split conflict: {conflicts}"
+            )
+        conflict_components += len(conflicts)
+        for row in conflicting_stage_rows:
+            chain_id = row["CHAINID"]
+            root_cluster = int(row["CLUSTER"])
+            remaining_chain_ids.remove(chain_id)
+            quarantined.append(
+                {
+                    "chain_id": chain_id,
+                    "original_cluster": int(original_cluster_by_chain[chain_id]),
+                    "reconciled_cluster": root_cluster,
+                    "reference_splits": sorted(conflicts[root_cluster]),
+                    "reason": "reference_split_conflict_component",
+                }
+            )
+
+    rows[:] = [row for row in rows if row["CHAINID"] in remaining_chain_ids]
+    for row in rows:
+        row["CLUSTER"] = reconciled_cluster_by_chain[row["CHAINID"]]
     inherited_split = {
         cluster: next(iter(splits))
         for cluster, splits in reference_splits_by_cluster.items()
@@ -177,7 +225,62 @@ def inherit_reference_splits(rows: list[dict], reference_dataset: Path) -> dict:
         ),
         "stage_valid_rows": sum(int(row["CLUSTER"]) in stage_valid for row in rows),
         "stage_test_rows": sum(int(row["CLUSTER"]) in stage_test for row in rows),
-    }
+        "split_conflict_components_quarantined": conflict_components,
+        "split_conflict_rows_quarantined": len(quarantined),
+    }, quarantined
+
+
+def filter_and_rewrite_indexes(
+    chain_index_path: Path,
+    record_index_path: Path,
+    rows: list[dict],
+) -> None:
+    cluster_by_chain = {row["CHAINID"]: int(row["CLUSTER"]) for row in rows}
+
+    chain_tmp = chain_index_path.with_suffix(".jsonl.tmp")
+    with chain_index_path.open("r", encoding="utf-8") as source, chain_tmp.open(
+        "w", encoding="utf-8"
+    ) as destination:
+        for line in source:
+            index_row = json.loads(line)
+            cluster = cluster_by_chain.get(index_row["chain_id"])
+            if cluster is None:
+                continue
+            index_row["cluster"] = cluster
+            destination.write(json.dumps(index_row, sort_keys=True) + "\n")
+    chain_tmp.replace(chain_index_path)
+
+    record_tmp = record_index_path.with_suffix(".jsonl.tmp")
+    with record_index_path.open("r", encoding="utf-8") as source, record_tmp.open(
+        "w", encoding="utf-8"
+    ) as destination:
+        for line in source:
+            index_row = json.loads(line)
+            if not all(chain_id in cluster_by_chain for chain_id in index_row["chains"]):
+                continue
+            index_row["clusters"] = sorted(
+                {cluster_by_chain[chain_id] for chain_id in index_row["chains"]}
+            )
+            destination.write(json.dumps(index_row, sort_keys=True) + "\n")
+    record_tmp.replace(record_index_path)
+
+
+def summarize_existing_shards(shards_dir: Path, record_index_path: Path) -> list[dict]:
+    records_per_shard = Counter(
+        row["shard"] for row in read_jsonl(record_index_path)
+    )
+    summaries = []
+    for shard_path in sorted(shards_dir.glob("*.tar")):
+        relative_path = f"shards/{shard_path.name}"
+        summaries.append(
+            {
+                "name": shard_path.name,
+                "records": records_per_shard[relative_path],
+                "bytes": shard_path.stat().st_size,
+                "sha256": tar_builder.sha256_file(shard_path),
+            }
+        )
+    return summaries
 
 
 def write_cluster_ids(path: Path, values: list[int]) -> None:
@@ -289,6 +392,7 @@ def main() -> int:
     context_chain_count = 0
     original_context_residues = 0
     retained_context_residues = 0
+    crop_stats_by_chain = {}
     worker_peak_rss_kib = 0
     shard_index = 0
     shard_payload_bytes = 0
@@ -305,7 +409,6 @@ def main() -> int:
                 "name": shard_name,
                 "records": shard_record_count,
                 "bytes": shard_path.stat().st_size,
-                "sha256": tar_builder.sha256_file(shard_path),
             }
         )
 
@@ -341,6 +444,12 @@ def main() -> int:
         )
         tar_builder.write_indexes(record_index, chain_index, record_row, result["rows"])
         rows.extend(result["rows"])
+        if len(result["rows"]) != 1:
+            raise ValueError("stage2a expects exactly one target row per payload")
+        crop_stats_by_chain[result["rows"][0]["CHAINID"]] = {
+            "context_chains": result["chains"],
+            **result["crop"],
+        }
         record_count += 1
         context_chain_count += result["chains"]
         original_context_residues += result["crop"]["original_context_length"]
@@ -374,8 +483,23 @@ def main() -> int:
     if not rows:
         raise SystemExit("No spatial crop records were produced")
 
-    split_stats = inherit_reference_splits(rows, reference_dataset)
-    tar_builder.rewrite_index_clusters(chain_index_path, record_index_path, rows)
+    split_stats, quarantined = inherit_reference_splits(rows, reference_dataset)
+    filter_and_rewrite_indexes(chain_index_path, record_index_path, rows)
+    kept_chain_ids = {row["CHAINID"] for row in rows}
+    record_count = len(rows)
+    context_chain_count = sum(
+        crop_stats_by_chain[chain_id]["context_chains"]
+        for chain_id in kept_chain_ids
+    )
+    original_context_residues = sum(
+        crop_stats_by_chain[chain_id]["original_context_length"]
+        for chain_id in kept_chain_ids
+    )
+    retained_context_residues = sum(
+        crop_stats_by_chain[chain_id]["retained_context_length"]
+        for chain_id in kept_chain_ids
+    )
+    shard_summaries = summarize_existing_shards(shards_dir, record_index_path)
     rows.sort(key=lambda row: row["CHAINID"])
     with (out_dir / "list.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
@@ -402,6 +526,12 @@ def main() -> int:
     if skipped:
         with (out_dir / "build_skipped.jsonl").open("w", encoding="utf-8") as handle:
             for result in skipped:
+                handle.write(json.dumps(result, sort_keys=True) + "\n")
+    if quarantined:
+        with (out_dir / "build_quarantined.jsonl").open(
+            "w", encoding="utf-8"
+        ) as handle:
+            for result in quarantined:
                 handle.write(json.dumps(result, sort_keys=True) + "\n")
 
     build_manifest = {
@@ -435,7 +565,10 @@ def main() -> int:
             "parent_peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
         },
         "crop_policy": base.SPATIAL_CROP_POLICY,
-        "split_policy": "inherit_v1_reference_clusters_stage2_only_clusters_train",
+        "split_policy": (
+            "inherit_v1_reference_clusters_stage2_only_clusters_train_"
+            "quarantine_conflicting_components"
+        ),
         "filters": {
             "max_resolution": args.max_resolution,
             "min_date": args.min_date,
@@ -457,6 +590,8 @@ def main() -> int:
             "original_context_residues": original_context_residues,
             "retained_context_residues": retained_context_residues,
             "failures": len(failures),
+            "parsed_crop_payloads": stats["ok"],
+            "published_records": record_count,
             **dict(stats),
             **split_stats,
         },
@@ -478,6 +613,8 @@ def main() -> int:
         "payload_schema": PAYLOAD_SCHEMA,
         "target_selection_policy": "max_resolved_backbone_then_coverage_then_source_id",
         "crop_policy": base.SPATIAL_CROP_POLICY,
+        "quarantine_policy": "exclude_reference_split_conflict_components",
+        "quarantined_payload_count": len(quarantined),
         "record_count": record_count,
         "target_count": record_count,
         "context_chain_count": context_chain_count,
@@ -490,6 +627,7 @@ def main() -> int:
             "valid_clusters": "valid_clusters.txt",
             "test_clusters": "test_clusters.txt",
             "build_manifest": "build_manifest.json",
+            "quarantine": "build_quarantined.jsonl" if quarantined else None,
         },
         "build": build_manifest,
     }

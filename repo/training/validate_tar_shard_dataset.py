@@ -640,6 +640,7 @@ def main():
     require(exact_sequence_split_leaks == 0, "exact sequences cross data splits")
     require(pdb_split_leaks == 0, "PDB IDs cross data splits")
     reference_split_stats = {}
+    quarantine_stats = {"quarantined_payloads": 0}
     if payload_schema == SPATIAL_CROP_PAYLOAD_SCHEMA:
         require(
             manifest.get("crop_policy") == SPATIAL_CROP_POLICY,
@@ -652,6 +653,44 @@ def main():
             valid_clusters,
             test_clusters,
         )
+        quarantined_payloads = int(manifest.get("quarantined_payload_count", 0))
+        require(
+            quarantined_payloads
+            == int(build_manifest.get("counts", {}).get("split_conflict_rows_quarantined", 0)),
+            "manifest/build quarantine counts differ",
+        )
+        if quarantined_payloads > 0:
+            require(
+                manifest.get("quarantine_policy")
+                == "exclude_reference_split_conflict_components",
+                "unexpected quarantine policy",
+            )
+            quarantine_file = manifest.get("files", {}).get("quarantine")
+            require(quarantine_file, "manifest does not name the quarantine file")
+            quarantine_path = dataset_dir / quarantine_file
+            require(quarantine_path.is_file(), "quarantine file is missing")
+            quarantine_rows = read_jsonl(quarantine_path)
+            quarantine_ids = [row.get("chain_id") for row in quarantine_rows]
+            require(
+                len(quarantine_rows) == quarantined_payloads,
+                "quarantine row count mismatch",
+            )
+            require(
+                len(set(quarantine_ids)) == len(quarantine_ids),
+                "duplicate quarantine chain IDs",
+            )
+            require(
+                set(quarantine_ids).isdisjoint(row_by_chain),
+                "quarantined chains remain in the training index",
+            )
+            require(
+                all(
+                    row.get("reason") == "reference_split_conflict_component"
+                    for row in quarantine_rows
+                ),
+                "unexpected quarantine reason",
+            )
+        quarantine_stats = {"quarantined_payloads": quarantined_payloads}
 
     store = TarShardStore(dataset_dir)
     require(len(store.index_by_chain) == len(rows), "TarShardStore index count mismatch")
@@ -692,6 +731,7 @@ def main():
         "exact_sequence_split_leaks": exact_sequence_split_leaks,
         "pdb_split_leaks": pdb_split_leaks,
         **reference_split_stats,
+        **quarantine_stats,
         "status": "ok",
     }
     rendered = json.dumps(result, indent=2, sort_keys=True)

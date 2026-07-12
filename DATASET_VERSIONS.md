@@ -155,12 +155,29 @@ proteinmpnn_pdb_20260708/processed/proteinmpnn_tar_shards_stage2a_v1
 A 42-input boundary pilot covered a 69,654-residue, 78-chain assembly and two
 over-budget single-chain targets. It produced 40 valid crops with zero parser or
 split-leak failures; parser peak RSS was 1,657,896 KiB. The complete production
-artifact must pass the same exhaustive payload validator before stage-two
-training starts. Separate worst-case preflights covered the largest parsed
+artifact passed the same exhaustive payload validator. Separate worst-case
+preflights covered the largest parsed
 context (357,240 residues, 780 chains) and largest compressed deferred input
 (52,020,427 bytes, 1,080 chains); their parser peaks were 3,289,472 KiB and
 3,654,784 KiB respectively. Long target chains and the 101 raw files above
 50 MiB remain a separate later substage.
+
+The completed stage2a production build contains 9,617 published records and
+57,829 retained context chains across six shards (5.4 GiB). Of 10,166 deferred
+inputs, 9,634 produced crop payloads and 532 complete target chains exceeded the
+2,000-residue budget. The final combined split check found one connected
+component in which new exact-sequence evidence linked v1 train cluster 1682 to
+v1 valid cluster 3832. All 17 stage2a records in that ambiguous component were
+quarantined and removed from the training indexes; their unused tar members and
+provenance remain recorded in `build_quarantined.jsonl`. Published rows are
+9,585 train, 19 valid, and 13 test.
+
+Exhaustive validation checked all 9,617 payloads and 57,829 context chains. It
+reported zero exact-sequence split leaks, zero PDB split leaks, zero PDB overlap
+with v1, and 17 quarantined payloads. The parsed tar/index files were preserved
+after the split gate fired and finalized with
+`finalize_pdb_oversized_crop_tar_dataset.py`; `_recovery/` contains checksum-
+pinned copies of the original complete indexes.
 
 Purpose:
 

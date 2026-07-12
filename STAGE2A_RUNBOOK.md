@@ -4,6 +4,10 @@ Stage2a continues from the promoted 2026 v1 weights on bounded spatial crops of
 oversized assemblies. Training remains single-GPU because the current loop does
 not implement DDP.
 
+The production artifact contains 9,617 validated records in six shards. Its
+`validation.json` has status `ok`; 17 ambiguous split-bridge records are
+quarantined and are not present in the training indexes.
+
 ## 1. Wait For The Local Build
 
 Monitor without attaching:

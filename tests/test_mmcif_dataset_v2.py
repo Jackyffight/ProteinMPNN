@@ -1,5 +1,6 @@
 import importlib.util
 import io
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -215,14 +216,77 @@ class MmcifDatasetV2Test(unittest.TestCase):
                 {"CHAINID": "6abca1_A", "CLUSTER": "30", "SEQUENCE": "EEEE"},
             ]
 
-            stats = crop_builder.inherit_reference_splits(rows, reference)
+            stats, quarantined = crop_builder.inherit_reference_splits(rows, reference)
 
         self.assertEqual([row["CLUSTER"] for row in rows], ["20", "40", "30"])
+        self.assertEqual(quarantined, [])
         self.assertEqual(stats["stage_valid_cluster_ids"], [20])
         self.assertEqual(stats["stage_test_cluster_ids"], [30])
         self.assertEqual(stats["stage_train_rows"], 1)
         self.assertEqual(stats["stage_valid_rows"], 1)
         self.assertEqual(stats["stage_test_rows"], 1)
+
+    def test_oversized_split_inheritance_quarantines_a_conflicting_component(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reference = Path(temp_dir)
+            (reference / "list.csv").write_text(
+                "CHAINID,DEPOSITION,RESOLUTION,HASH,CLUSTER,SEQUENCE\n"
+                "1abca1_A,2025-01-01,2.0,h1,10,AAAA\n"
+                "2abca1_A,2025-01-01,2.0,h2,20,BBBB\n",
+                encoding="utf-8",
+            )
+            (reference / "valid_clusters.txt").write_text("20\n", encoding="utf-8")
+            (reference / "test_clusters.txt").write_text("", encoding="utf-8")
+            rows = [
+                {"CHAINID": "3abca1_A", "CLUSTER": "10", "SEQUENCE": "BBBB"},
+                {"CHAINID": "4abca1_A", "CLUSTER": "10", "SEQUENCE": "CCCC"},
+                {"CHAINID": "5abca1_A", "CLUSTER": "30", "SEQUENCE": "DDDD"},
+            ]
+
+            stats, quarantined = crop_builder.inherit_reference_splits(rows, reference)
+
+        self.assertEqual([row["CHAINID"] for row in rows], ["5abca1_A"])
+        self.assertEqual(stats["split_conflict_components_quarantined"], 1)
+        self.assertEqual(stats["split_conflict_rows_quarantined"], 2)
+        self.assertEqual(
+            {row["chain_id"] for row in quarantined},
+            {"3abca1_A", "4abca1_A"},
+        )
+        self.assertEqual(
+            {tuple(row["reference_splits"]) for row in quarantined},
+            {("train", "valid")},
+        )
+
+    def test_oversized_index_rewrite_excludes_quarantined_records(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            chain_index = root / "index.jsonl"
+            record_index = root / "records.jsonl"
+            chain_index.write_text(
+                json.dumps({"chain_id": "1abca1_A", "cluster": 10}) + "\n"
+                + json.dumps({"chain_id": "2abca1_A", "cluster": 20}) + "\n",
+                encoding="utf-8",
+            )
+            record_index.write_text(
+                json.dumps({"entry_id": "1abca1", "chains": ["1abca1_A"], "clusters": [10]}) + "\n"
+                + json.dumps({"entry_id": "2abca1", "chains": ["2abca1_A"], "clusters": [20]}) + "\n",
+                encoding="utf-8",
+            )
+
+            crop_builder.filter_and_rewrite_indexes(
+                chain_index,
+                record_index,
+                [{"CHAINID": "2abca1_A", "CLUSTER": "30"}],
+            )
+
+            chain_rows = [json.loads(line) for line in chain_index.read_text().splitlines()]
+            record_rows = [json.loads(line) for line in record_index.read_text().splitlines()]
+
+        self.assertEqual(chain_rows, [{"chain_id": "2abca1_A", "cluster": 30}])
+        self.assertEqual(
+            record_rows,
+            [{"chains": ["2abca1_A"], "clusters": [30], "entry_id": "2abca1"}],
+        )
 
     def test_exact_sequence_cluster_conflicts_are_unioned(self):
         rows = [

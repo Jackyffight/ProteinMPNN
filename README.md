@@ -92,6 +92,8 @@ same exhaustive tar/payload validator. Targets above 2,000 residues and raw
 files above 50 MiB remain separate later inputs; see `DATASET_VERSIONS.md`.
 The post-build sync, pilot, dual-validation gate, and formal training commands
 are in `STAGE2A_RUNBOOK.md`.
+The completed stage2a artifact has 9,617 validated records across six shards;
+17 records from one train/valid bridge component are explicitly quarantined.
 
 To download or rebuild the upstream reference archive from HTTP range parts:
 
