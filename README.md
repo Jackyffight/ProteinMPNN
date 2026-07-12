@@ -170,6 +170,18 @@ selected checkpoints once on all 461 test records:
 scripts/evaluate_2026_v1_selected_test.sh
 ```
 
+If both complete-population gates improve over the official checkpoint, promote
+the selected weights into a stable, checksum-protected artifact:
+
+```bash
+scripts/promote_2026_v1_stage1.sh
+```
+
+The promoted model is stored under
+`runs/promoted/proteinmpnn-2026-v1-stage1/` as `model.pt`, `promotion.json`, and
+copies of the fixed-valid and selected-test summaries. Use `model.pt` only as
+weight initialization; do not restore its stage-1 optimizer for a later stage.
+
 `evaluate_2026_v1_stage1.sh` remains a quick paired valid check of `best.pt`.
 `evaluate_2026_v1_stage1_multiseed.sh` is a validation sensitivity check over
 assembly-selection seeds; it is not a substitute for independently trained seeds.

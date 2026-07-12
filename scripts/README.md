@@ -78,7 +78,13 @@ After the fixed-valid summary selects one checkpoint, run the test comparison on
 
 ```bash
 scripts/evaluate_2026_v1_selected_test.sh
+scripts/promote_2026_v1_stage1.sh
 ```
+
+Promotion requires negative valid and test NLL deltas, matching selected
+checkpoint paths and SHA256 values, and the complete 426/461 record populations.
+It atomically copies the checkpoint and writes a provenance manifest under
+`runs/promoted/proteinmpnn-2026-v1-stage1/`.
 
 The paired and multi-seed stage-1 scripts now use complete validation records only.
 The multi-seed script measures evaluation sensitivity; promotion across training
