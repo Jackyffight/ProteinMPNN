@@ -259,6 +259,7 @@ class ESMFold2RunnerTest(unittest.TestCase):
         self.assertIn(ESMC_6B_REVISION, setup)
         self.assertIn("verify-esmfold2-runtime", setup)
         self.assertIn("ensure_venv_pip.sh", setup)
+        self.assertIn('jsonschema==4.25.1', setup)
         self.assertNotIn("pip install esm@", setup)
         self.assertIn("this bounded runner is single-GPU", runner)
         self.assertIn("HF_HUB_OFFLINE=1", runner)

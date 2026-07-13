@@ -86,6 +86,9 @@ export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 "$SCRIPT_DIR/ensure_venv_pip.sh" "$RUNTIME_PYTHON"
 "$RUNTIME_PYTHON" -m pip install --no-cache-dir --upgrade \
+  "jsonschema==4.25.1" \
+  "$REPO_ROOT/protein_mrna_pipeline"
+"$RUNTIME_PYTHON" -m pip install --no-cache-dir --upgrade \
   "transformers @ https://github.com/Biohub/transformers/archive/${TRANSFORMERS_COMMIT}.zip"
 
 FAST_REVISION="$FAST_REVISION" ESMC_REVISION="$ESMC_REVISION" \
