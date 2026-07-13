@@ -57,6 +57,19 @@ command -v "$BASE_PYTHON" >/dev/null 2>&1 || {
   echo "Error: the ESMFold2-Fast runner requires Python 3.10 or newer." >&2
   exit 1
 }
+BASE_TORCH_VERSION="$("$BASE_PYTHON" - <<'PY'
+import importlib.metadata
+import torch
+
+if not torch.cuda.is_available():
+    raise SystemExit("base Python Torch cannot access CUDA")
+print(importlib.metadata.version("torch"))
+PY
+)" || {
+  echo "Error: base Python must provide CUDA-enabled Torch with package metadata." >&2
+  exit 1
+}
+echo "base_torch_version: $BASE_TORCH_VERSION"
 
 mkdir -p "$RUNTIME_ROOT" "$RUNTIME_ROOT/models" "$RUNTIME_ROOT/tmp" "$RUNTIME_ROOT/hf-home"
 existing_bytes="$(du -sb "$RUNTIME_ROOT/models" | awk '{print $1}')"
@@ -85,6 +98,29 @@ export HF_HUB_DOWNLOAD_TIMEOUT="${HF_HUB_DOWNLOAD_TIMEOUT:-3600}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 "$SCRIPT_DIR/ensure_venv_pip.sh" "$RUNTIME_PYTHON"
+VENV_SITE_PACKAGES="$("$RUNTIME_PYTHON" -c \
+  'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+"$BASE_PYTHON" "$SCRIPT_DIR/link_base_torch_site.py" \
+  --target-site-packages "$VENV_SITE_PACKAGES"
+RUNTIME_TORCH_VERSION="$("$RUNTIME_PYTHON" - <<'PY'
+import importlib.metadata
+import torch
+
+if not torch.cuda.is_available():
+    raise SystemExit("runtime venv Torch cannot access CUDA")
+print(importlib.metadata.version("torch"))
+PY
+)" || {
+  echo "Error: runtime venv cannot reuse the base CUDA Torch installation." >&2
+  exit 1
+}
+if [ "$RUNTIME_TORCH_VERSION" != "$BASE_TORCH_VERSION" ]; then
+  echo "Error: runtime/base Torch versions differ." >&2
+  echo "base: $BASE_TORCH_VERSION" >&2
+  echo "runtime: $RUNTIME_TORCH_VERSION" >&2
+  exit 1
+fi
+echo "runtime_torch_version: $RUNTIME_TORCH_VERSION"
 "$RUNTIME_PYTHON" -m pip install --no-cache-dir --upgrade \
   "jsonschema==4.25.1" \
   "$REPO_ROOT/protein_mrna_pipeline"

@@ -259,8 +259,10 @@ class ESMFold2RunnerTest(unittest.TestCase):
         self.assertIn(ESMC_6B_REVISION, setup)
         self.assertIn("verify-esmfold2-runtime", setup)
         self.assertIn("ensure_venv_pip.sh", setup)
+        self.assertIn("link_base_torch_site.py", setup)
         self.assertIn('jsonschema==4.25.1', setup)
         self.assertNotIn("pip install esm@", setup)
+        self.assertLess(setup.index("link_base_torch_site.py"), setup.index("snapshot_download"))
         self.assertIn("this bounded runner is single-GPU", runner)
         self.assertIn("HF_HUB_OFFLINE=1", runner)
 
@@ -296,6 +298,51 @@ class ESMFold2RunnerTest(unittest.TestCase):
             )
             subprocess.run([helper, fake_python], check=True, env=environment)
             self.assertTrue(marker.is_file())
+
+    def test_base_torch_site_is_linked_into_the_runtime_venv(self):
+        helper = PROJECT_ROOT.parent / "scripts/link_base_torch_site.py"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "base-site"
+            torch_package = source / "torch"
+            torch_package.mkdir(parents=True)
+            (torch_package / "__init__.py").write_text(
+                '__version__ = "2.7.1"\n', encoding="utf-8"
+            )
+            metadata = source / "torch-2.7.1.dist-info"
+            metadata.mkdir()
+            (metadata / "METADATA").write_text(
+                "Metadata-Version: 2.1\nName: torch\nVersion: 2.7.1\n",
+                encoding="utf-8",
+            )
+            target = root / "venv-site"
+            environment = dict(os.environ)
+            environment["PYTHONPATH"] = str(source)
+            subprocess.run(
+                [sys.executable, helper, "--target-site-packages", target],
+                check=True,
+                env=environment,
+            )
+            link = target / "proteinmpnn-base-torch.pth"
+            self.assertEqual(link.read_text(encoding="utf-8"), f"{source}\n")
+            validation = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import importlib.metadata,site,sys;"
+                        "site.addsitedir(sys.argv[1]);"
+                        "import torch;"
+                        "print(importlib.metadata.version('torch'))"
+                    ),
+                    str(target),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONPATH": ""},
+            )
+            self.assertEqual(validation.stdout.strip(), "2.7.1")
 
 
 if __name__ == "__main__":
