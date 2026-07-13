@@ -43,6 +43,9 @@ Implemented:
 - a revision- and checksum-pinned ESMFold2-Fast runtime installer;
 - a sequential four-bin smoke and 40-record structure runner with atomic PDB
   artifacts, per-record metrics, integrity checks, and interruption recovery;
+- a checksum- and sequence-position-bound native-structure evaluator with
+  C-alpha lDDT, RMSD, dual-normalized TM-score, coverage, length-bin summaries,
+  and confidence correlations;
 - a typed adapter boundary for future structure, ProteinMPNN, and mRNA workers.
 
 The installable JSON Schemas live beside the package source under
@@ -53,7 +56,6 @@ Not implemented yet:
 
 - queue-backed multi-worker structure execution;
 - ProteinMPNN inference orchestration;
-- structure comparison metrics;
 - synonymous CDS generation and mRNABERT adapters;
 - a real reviewed target package.
 
@@ -116,12 +118,19 @@ scripts/setup_esmfold2_fast_runtime.sh --dry-run
 scripts/setup_esmfold2_fast_runtime.sh
 CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh smoke
 CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh full
+scripts/setup_structure_metrics_runtime.sh
+scripts/evaluate_esmfold2_native_agreement.sh
 ```
 
 The full run is gated on a successful four-record smoke. Both modes are
 single-GPU, sequential, checksum-protected, and resumable in place. See
 `docs/ESMFOLD2_FAST_RUNBOOK.md` for pinned revisions, the 24.4 GiB weight budget,
 output contracts, and recovery behavior.
+
+The native-agreement step is CPU-only. It reads the fixed v1 experimental
+coordinates, verifies exact source and prediction identities, and writes
+resumable per-record metrics under the full ESMFold2 run. It does not tune the
+model or turn proxy scores into a biological quality claim.
 
 Inventory that runtime without installing packages or starting inference:
 

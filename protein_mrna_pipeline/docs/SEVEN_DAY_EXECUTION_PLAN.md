@@ -18,10 +18,11 @@ This plan therefore separates two lanes:
 The promoted ProteinMPNN Stage2a checkpoint remains frozen. Another training run
 is not the default response to unused GPU capacity.
 
-Current execution checkpoint: the fixed benchmark is ready and the pinned
-ESMFold2-Fast installer plus resumable one-GPU runner are implemented. The next
-machine actions are runtime download, four-bin smoke, then the gated 40-record
-run. Exact commands and identities are in `ESMFOLD2_FAST_RUNBOOK.md`.
+Current execution checkpoint: the fixed benchmark, pinned runtime, four-bin
+smoke, and gated 40-record ESMFold2-Fast run are complete. All 40 records passed;
+the measured mean was 21.44 seconds per record and peak allocated GPU memory was
+23.19 GB. The next machine action is the CPU-only native-structure agreement
+evaluation. Exact commands and identities are in `ESMFOLD2_FAST_RUNBOOK.md`.
 
 ## Engineering Inputs
 
@@ -85,18 +86,26 @@ suite and a reproducibly identifiable structure-model runtime.
 Gate 1: every input has one terminal or explicitly retryable result, artifacts
 match their declared SHA256 and size, and measured cost replaces guessed capacity.
 
-## Days 2-3: Four-Worker Engineering Run
+Gate 1 status: passed for the fixed sequential 40-record run. Queue lease-kill
+testing remains part of the later queue-backed worker implementation, not a
+claim about this direct sequential launcher.
 
-1. Partition the same immutable suite across four independent workers.
-2. Verify that no work item is completed twice and no failed item disappears.
-3. Compare single-worker and four-worker throughput and storage growth.
-4. Where experimental coordinates are available, compute generic structural
-   agreement metrics without introducing target-specific pass thresholds.
+## Days 2-3: Native Agreement And Conditional Scale
+
+1. Compute generic native-structure agreement on the fixed 40 records without
+   introducing target-specific pass thresholds.
+2. Review length-bin distributions, native coordinate coverage, and explicit
+   failures or outliers before creating more labels.
+3. Do not parallelize this 40-record suite merely to use idle GPUs: the measured
+   sequential run already finishes in about 15 minutes.
+4. Implement and kill-test queue-backed workers before any larger label run; if
+   a larger run is approved, compare one-worker and four-worker throughput there.
 5. Run a small paired official-vs-Stage2a ProteinMPNN inference benchmark on fixed
    PDB backbones only after the structure workflow is stable.
 
-Gate 2: scaling is accepted only if aggregate throughput improves, queue behavior
-remains correct, and outputs stay provenance-complete.
+Gate 2: native metrics and limitations are provenance-complete. Any later scaling
+is accepted only if aggregate throughput improves and queue recovery remains
+correct.
 
 ## Days 4-5: Conditional Generic Label Expansion
 
@@ -139,7 +148,8 @@ selection or wet-lab prioritization.
 - A deterministic, test-excluding benchmark suite is archived.
 - Fold cost, latency, peak memory, failure rate, and bytes per record are measured.
 - The queue survives an interrupted worker and preserves attempt history.
-- Four-worker scaling is measured rather than assumed.
+- The decision to skip or run four-worker scaling follows measured workload size;
+  any executed scaling run is measured rather than assumed.
 - Official and Stage2a checkpoints have a bounded paired engineering comparison,
   if the structure adapter is available.
 - Every emitted CDS, if that plumbing is exercised, translates exactly to its

@@ -21,6 +21,10 @@ from .esmfold2_runner import (
     verify_esmfold2_benchmark_run,
 )
 from .run_store import RunStore, initialize_run
+from .structure_agreement import (
+    create_metrics_runtime_manifest,
+    evaluate_native_structure_agreement,
+)
 
 
 KINDS = tuple(SCHEMA_FILES)
@@ -104,6 +108,24 @@ def command_verify_esmfold2_run(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def command_verify_structure_metrics_runtime(args: argparse.Namespace) -> int:
+    print_json(create_metrics_runtime_manifest(args.runtime_root))
+    return 0
+
+
+def command_evaluate_esmfold2_native(args: argparse.Namespace) -> int:
+    summary = evaluate_native_structure_agreement(
+        args.suite,
+        args.prediction_run,
+        args.dataset_dir,
+        args.output_dir,
+        args.metrics_runtime_root,
+        retry_failed=args.retry_failed,
+    )
+    print_json(summary)
+    return 0 if summary["status"] == "passed" else 1
 
 
 def command_enqueue(args: argparse.Namespace) -> int:
@@ -229,6 +251,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode", choices=("smoke", "full"), required=True
     )
     verify_structure_parser.set_defaults(handler=command_verify_esmfold2_run)
+
+    metrics_runtime_parser = subparsers.add_parser(
+        "verify-structure-metrics-runtime",
+        help="verify pinned native-structure metric dependencies and write a manifest",
+    )
+    metrics_runtime_parser.add_argument("--runtime-root", required=True)
+    metrics_runtime_parser.set_defaults(
+        handler=command_verify_structure_metrics_runtime
+    )
+
+    agreement_parser = subparsers.add_parser(
+        "evaluate-esmfold2-native",
+        help="compare a complete ESMFold2 run with its fixed experimental structures",
+    )
+    agreement_parser.add_argument("--suite", required=True)
+    agreement_parser.add_argument("--prediction-run", required=True)
+    agreement_parser.add_argument("--dataset-dir", required=True)
+    agreement_parser.add_argument("--output-dir", required=True)
+    agreement_parser.add_argument("--metrics-runtime-root", required=True)
+    agreement_parser.add_argument("--retry-failed", action="store_true")
+    agreement_parser.set_defaults(handler=command_evaluate_esmfold2_native)
 
     enqueue_parser = subparsers.add_parser("enqueue", help="enqueue one work item")
     enqueue_parser.add_argument("--run-dir", required=True)

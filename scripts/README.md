@@ -51,6 +51,9 @@ scripts/setup_esmfold2_fast_runtime.sh --dry-run
 scripts/setup_esmfold2_fast_runtime.sh
 CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh smoke
 CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh full
+scripts/setup_structure_metrics_runtime.sh --dry-run
+scripts/setup_structure_metrics_runtime.sh
+scripts/evaluate_esmfold2_native_agreement.sh
 ```
 
 It reads only the validated 2026 v1 metadata, selects 40 cluster-unique native
@@ -65,6 +68,11 @@ downloads about 24.4 GiB of checksummed weights into an isolated runtime, and is
 safe to rerun after an interrupted download. The runner uses one GPU and one
 record at a time; `full` is blocked until the four-length-bin smoke passes. See
 `protein_mrna_pipeline/docs/ESMFOLD2_FAST_RUNBOOK.md`.
+The native-agreement launcher is CPU-only and resumable. It pins a separate
+Biotite metrics environment, verifies exact sequence-position correspondence,
+and compares the 40 predicted PDBs with resolved C-alpha coordinates in the v1
+tar shards. It leaves failed records explicit and uses no quality threshold for
+model or checkpoint selection.
 
 For A100:
 

@@ -130,3 +130,73 @@ checksums, runtime identity, inference parameters, and record IDs. Each result
 stores wall time, peak allocated/reserved GPU memory, pLDDT, pTM, PDB size, and
 PDB SHA256. These are engineering measurements and computational predictions,
 not experimental evidence.
+
+The fixed full run completed on 2026-07-13 with 40/40 records, no failures,
+857.57 seconds of record runtime, 21.44 mean seconds per record, and a peak of
+23,187,596,800 allocated GPU bytes. Its run identity is
+`3fdbe3d5df4233ce6debf5395d095e527032b9cc91ce42186f9936cbd361c1bc`.
+
+## Native-Structure Agreement
+
+The next step does not refold sequences and does not use a GPU. It compares the
+40 predicted PDB files with the experimental target-chain coordinates already
+stored in the checksum-bound v1 ProteinMPNN tar shards.
+
+Install the separate pinned metrics environment, then run the resumable
+evaluation:
+
+```bash
+scripts/setup_structure_metrics_runtime.sh --dry-run
+scripts/setup_structure_metrics_runtime.sh
+scripts/evaluate_esmfold2_native_agreement.sh
+```
+
+The metrics runtime pins Biotite 1.6.0, Biotraj 1.2.2, NumPy 2.4.6, and SciPy
+1.17.1. It reuses the base interpreter's Torch only to read the existing payload
+files. The launcher hides all GPUs and limits BLAS/OpenMP to one thread.
+
+Default output:
+
+```text
+<full-esmfold2-run>/evaluations/native-structure-agreement-v1/
+  evaluation-manifest.json
+  summary.json
+  records.jsonl
+  records/<record-id>.json
+```
+
+The evaluator requires exact sequence-position correspondence. It rejects a
+record if the benchmark sequence, tar index length, payload target, predicted
+PDB sequence, residue numbering, run identity, or PDB SHA256 differs. It does
+not perform a free sequence or chain alignment.
+
+Reported metrics are:
+
+- C-alpha lDDT with a 15 Angstrom inclusion radius and 0.5/1/2/4 Angstrom bins;
+- C-alpha RMSD after one global Kabsch fit over experimentally resolved C-alpha
+  positions;
+- C-alpha TM-score after that same fit, normalized once by resolved native
+  positions and once by full sequence length;
+- native C-alpha and complete-backbone coverage;
+- pLDDT-to-lDDT and pTM-to-full-length-TM Pearson correlations;
+- overall and per-length-bin count, mean, median, minimum, and maximum.
+
+The full-length TM-score can be capped by native coordinate coverage because an
+unresolved native position contributes no matched C-alpha. Read it together
+with the resolved-position score and coverage. No metric threshold is a release
+gate here, and these 40 valid records must not be used to tune inference
+parameters or select another checkpoint.
+
+This is also not a strict ESMFold2 generalization benchmark: overlap between the
+40 PDB records and the structure model's training corpus has not been audited.
+The predictions are single-chain, while each experimental target chain was
+extracted from a biological assembly and may include interface-stabilized
+conformations. Those effects must remain visible when interpreting outliers.
+
+Completed records are reused only when their evaluation identity and sequence
+hash still match. Explicit failures remain visible. Retry them after correcting
+the recorded cause with:
+
+```bash
+RETRY_FAILED=1 scripts/evaluate_esmfold2_native_agreement.sh
+```
