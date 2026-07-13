@@ -15,6 +15,11 @@ from .contracts import (
     read_json,
     validate_document,
 )
+from .esmfold2_runner import (
+    create_runtime_manifest,
+    run_esmfold2_benchmark,
+    verify_esmfold2_benchmark_run,
+)
 from .run_store import RunStore, initialize_run
 
 
@@ -58,6 +63,46 @@ def command_make_benchmark(args: argparse.Namespace) -> int:
 
 def command_verify_benchmark(args: argparse.Namespace) -> int:
     print_json(verify_benchmark_suite_files(args.suite))
+    return 0
+
+
+def command_verify_esmfold2_runtime(args: argparse.Namespace) -> int:
+    print_json(
+        create_runtime_manifest(
+            args.runtime_root,
+            verify_hashes=not args.skip_weight_hashes,
+        )
+    )
+    return 0
+
+
+def command_run_esmfold2_benchmark(args: argparse.Namespace) -> int:
+    summary = run_esmfold2_benchmark(
+        args.suite,
+        args.output_dir,
+        args.runtime_root,
+        mode=args.mode,
+        seed=args.seed,
+        parameters={
+            "chunk_size": args.chunk_size,
+            "num_diffusion_samples": 1,
+            "num_loops": args.num_loops,
+            "num_sampling_steps": args.num_sampling_steps,
+        },
+        retry_failed=args.retry_failed,
+    )
+    print_json(summary)
+    return 0 if summary["status"] == "passed" else 1
+
+
+def command_verify_esmfold2_run(args: argparse.Namespace) -> int:
+    print_json(
+        verify_esmfold2_benchmark_run(
+            args.suite,
+            args.output_dir,
+            mode=args.mode,
+        )
+    )
     return 0
 
 
@@ -146,6 +191,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify_benchmark_parser.add_argument("--suite", required=True)
     verify_benchmark_parser.set_defaults(handler=command_verify_benchmark)
+
+    runtime_parser = subparsers.add_parser(
+        "verify-esmfold2-runtime",
+        help="verify pinned ESMFold2-Fast weights and write its runtime manifest",
+    )
+    runtime_parser.add_argument("--runtime-root", required=True)
+    runtime_parser.add_argument(
+        "--skip-weight-hashes",
+        action="store_true",
+        help="check weight sizes only; intended for repeat inventory, not installation",
+    )
+    runtime_parser.set_defaults(handler=command_verify_esmfold2_runtime)
+
+    structure_parser = subparsers.add_parser(
+        "run-esmfold2-benchmark",
+        help="run the resumable pinned ESMFold2-Fast engineering benchmark",
+    )
+    structure_parser.add_argument("--suite", required=True)
+    structure_parser.add_argument("--output-dir", required=True)
+    structure_parser.add_argument("--runtime-root", required=True)
+    structure_parser.add_argument("--mode", choices=("smoke", "full"), default="smoke")
+    structure_parser.add_argument("--seed", type=int, default=42)
+    structure_parser.add_argument("--chunk-size", type=int, default=64)
+    structure_parser.add_argument("--num-loops", type=int, default=3)
+    structure_parser.add_argument("--num-sampling-steps", type=int, default=50)
+    structure_parser.add_argument("--retry-failed", action="store_true")
+    structure_parser.set_defaults(handler=command_run_esmfold2_benchmark)
+
+    verify_structure_parser = subparsers.add_parser(
+        "verify-esmfold2-run",
+        help="verify every result and PDB checksum in an ESMFold2 benchmark run",
+    )
+    verify_structure_parser.add_argument("--suite", required=True)
+    verify_structure_parser.add_argument("--output-dir", required=True)
+    verify_structure_parser.add_argument(
+        "--mode", choices=("smoke", "full"), required=True
+    )
+    verify_structure_parser.set_defaults(handler=command_verify_esmfold2_run)
 
     enqueue_parser = subparsers.add_parser("enqueue", help="enqueue one work item")
     enqueue_parser.add_argument("--run-dir", required=True)

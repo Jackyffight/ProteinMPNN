@@ -1,0 +1,126 @@
+# ESMFold2-Fast Engineering Runbook
+
+## Decision
+
+The structure benchmark uses the released Biohub **ESMFold2-Fast** model, not
+the original Meta ESMFold model. Fast is the correct first runtime for the fixed
+40-record single-chain benchmark because it is the inference-optimized,
+single-sequence ESMFold2 variant. The full `biohub/ESMFold2` model adds optional
+MSA and multi-biomolecule capabilities that this benchmark does not exercise.
+
+The runtime is immutable at these identities:
+
+| Component | Identity |
+| --- | --- |
+| Biohub transformers source | `ef32577f55da19a4989cd7b22e004dc43a4998cb` |
+| `biohub/ESMFold2-Fast` | `b28d8ace5e05e61e5bec1e6820cfd3e221819d12` |
+| `biohub/ESMC-6B` | `45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a` |
+| Inference | loops 3, sampling steps 50, diffusion samples 1, chunk size 64 |
+| Benchmark seed | 42 |
+
+Official sources:
+
+- <https://huggingface.co/biohub/ESMFold2-Fast>
+- <https://huggingface.co/biohub/ESMC-6B>
+- <https://github.com/Biohub/transformers>
+
+## Model Contents And Storage
+
+`ESMFold2-Fast` is not a self-contained 721 MiB model. Its folding trunk loads
+the separate `ESMC-6B` protein language model. The seven checksum-pinned weight
+files total `26,163,565,812` bytes, or about 24.4 GiB:
+
+- ESMFold2-Fast folding and confidence weights: 755,416,924 bytes;
+- ESMC-6B language-model weights: six shards totaling 25,408,148,888 bytes.
+
+The setup preflight requires the missing weight bytes plus 6 GiB of free-space
+headroom. It creates an isolated venv under the structure runtime but reuses the
+server's CUDA-enabled PyTorch through `--system-site-packages`; it does not
+modify the ProteinMPNN training environment.
+
+Default layout:
+
+```text
+$MPNN_WORKSPACE/structure_runtime/esmfold2-fast/
+  venv/
+  models/
+    ESMFold2-Fast/
+    ESMC-6B/
+  hf-home/
+  runtime-manifest.json
+```
+
+## Install
+
+From the ProteinMPNN repository root on the GPU server:
+
+```bash
+scripts/setup_esmfold2_fast_runtime.sh --dry-run
+scripts/setup_esmfold2_fast_runtime.sh
+```
+
+The downloads are resumable. Rerun the same setup command after a network or
+shell interruption. Setup is complete only after all seven weight SHA256 values
+pass and `runtime-manifest.json` is written.
+
+## Four-Record Smoke
+
+The smoke selects the longest record in each of the four existing length bins.
+It loads the model once and folds the four records sequentially on one visible
+GPU:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh smoke
+```
+
+Default output:
+
+```text
+runs/benchmarks/
+  esmfold2-fast-pdb-valid-7136a4ecae1956027aa6-smoke-l3-s50-seed42/
+```
+
+Check progress from another shell:
+
+```bash
+watch -n 2 nvidia-smi
+cat runs/benchmarks/esmfold2-fast-pdb-valid-7136a4ecae1956027aa6-smoke-l3-s50-seed42/summary.json
+```
+
+The same launch command resumes the same output directory. A completed record
+is skipped only when its result metadata, PDB byte size, and PDB SHA256 still
+match. An interrupted in-flight record has no committed result and is rerun.
+Explicit failed records remain visible; retry them with:
+
+```bash
+RETRY_FAILED=1 CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh smoke
+```
+
+## Full 40-Record Run
+
+The full command refuses to start until the four-record summary is `passed`:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh full
+```
+
+This remains deliberately single-GPU and sequential. It prevents accidental
+batching of several long sequences into the same 80 GiB GPU and gives every
+record an atomic recovery boundary. Four-worker scaling is a later benchmark;
+it should partition records across four independent processes after this
+one-GPU run measures actual memory and latency.
+
+Each run contains:
+
+```text
+run-manifest.json
+summary.json
+records/<record-id>/prediction.pdb
+records/<record-id>/result.json
+```
+
+The manifest pins the benchmark suite SHA256, model revisions, all weight
+checksums, runtime identity, inference parameters, and record IDs. Each result
+stores wall time, peak allocated/reserved GPU memory, pLDDT, pTM, PDB size, and
+PDB SHA256. These are engineering measurements and computational predictions,
+not experimental evidence.

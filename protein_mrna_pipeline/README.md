@@ -28,7 +28,7 @@ The project has two separate lanes:
 
 ## Current Status
 
-Implemented in the initial scaffold:
+Implemented:
 
 - strict JSON Schemas for target packages, work items, tool results, candidate
   records, and run manifests;
@@ -40,6 +40,9 @@ Implemented in the initial scaffold:
 - atomic run initialization with a mandatory safety gate;
 - a transactional SQLite queue with leases, retries, attempt history, status,
   and JSONL export;
+- a revision- and checksum-pinned ESMFold2-Fast runtime installer;
+- a sequential four-bin smoke and 40-record structure runner with atomic PDB
+  artifacts, per-record metrics, integrity checks, and interruption recovery;
 - a typed adapter boundary for future structure, ProteinMPNN, and mRNA workers.
 
 The installable JSON Schemas live beside the package source under
@@ -48,7 +51,7 @@ contract source of truth.
 
 Not implemented yet:
 
-- an ESMFold2 or fallback structure adapter;
+- queue-backed multi-worker structure execution;
 - ProteinMPNN inference orchestration;
 - structure comparison metrics;
 - synonymous CDS generation and mRNABERT adapters;
@@ -105,9 +108,20 @@ runs/benchmarks/structure-input-valid-.../
   sequences.fasta
 ```
 
-This command does not start a GPU process. The next engineering milestone is to
-pin an actually available structure-model runtime and connect its adapter to
-these records.
+This command does not start a GPU process. Install and run the pinned Biohub
+ESMFold2-Fast runtime next:
+
+```bash
+scripts/setup_esmfold2_fast_runtime.sh --dry-run
+scripts/setup_esmfold2_fast_runtime.sh
+CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh smoke
+CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh full
+```
+
+The full run is gated on a successful four-record smoke. Both modes are
+single-GPU, sequential, checksum-protected, and resumable in place. See
+`docs/ESMFOLD2_FAST_RUNBOOK.md` for pinned revisions, the 24.4 GiB weight budget,
+output contracts, and recovery behavior.
 
 Inventory that runtime without installing packages or starting inference:
 

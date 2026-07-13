@@ -47,6 +47,10 @@ Prepare the research-independent structure throughput benchmark:
 scripts/prepare_2026_structure_benchmark.sh --dry-run
 scripts/prepare_2026_structure_benchmark.sh
 scripts/inspect_structure_runtime.sh
+scripts/setup_esmfold2_fast_runtime.sh --dry-run
+scripts/setup_esmfold2_fast_runtime.sh
+CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh smoke
+CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh full
 ```
 
 It reads only the validated 2026 v1 metadata, selects 40 cluster-unique native
@@ -56,6 +60,11 @@ for this engineering preflight.
 `inspect_structure_runtime.sh` is read-only: it reports GPUs, relevant Python
 packages, candidate executables, and cache roots without installing or running a
 structure model.
+The ESMFold2-Fast setup pins the Biohub source plus both Hugging Face revisions,
+downloads about 24.4 GiB of checksummed weights into an isolated runtime, and is
+safe to rerun after an interrupted download. The runner uses one GPU and one
+record at a time; `full` is blocked until the four-length-bin smoke passes. See
+`protein_mrna_pipeline/docs/ESMFOLD2_FAST_RUNBOOK.md`.
 
 For A100:
 

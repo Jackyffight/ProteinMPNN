@@ -18,6 +18,11 @@ This plan therefore separates two lanes:
 The promoted ProteinMPNN Stage2a checkpoint remains frozen. Another training run
 is not the default response to unused GPU capacity.
 
+Current execution checkpoint: the fixed benchmark is ready and the pinned
+ESMFold2-Fast installer plus resumable one-GPU runner are implemented. The next
+machine actions are runtime download, four-bin smoke, then the gated 40-record
+run. Exact commands and identities are in `ESMFOLD2_FAST_RUNBOOK.md`.
+
 ## Engineering Inputs
 
 Lane A uses the validated post-2021 ProteinMPNN v1 dataset already present on the
@@ -59,9 +64,9 @@ This command reads metadata only. It does not open tar shards or start a GPU.
 
 1. Generate and validate the 40-record benchmark suite.
 2. Record its benchmark ID, suite SHA256, source manifest hashes, and FASTA hash.
-3. Inventory the structure predictor actually available on the GPU host.
-4. Pin its code revision, weight checksum, environment identity, and inference
-   parameters before writing the adapter.
+3. Use Biohub ESMFold2-Fast for this single-sequence benchmark.
+4. Verify its pinned source revision, two model revisions, seven weight
+   checksums, environment identity, and fixed inference parameters.
 5. Preflight output storage and the archive destination.
 
 Gate 0: proceed without a research target, but not without a validated benchmark
@@ -69,7 +74,8 @@ suite and a reproducibly identifiable structure-model runtime.
 
 ## Day 1: One-GPU Structure Adapter
 
-1. Implement the structure adapter behind `ToolAdapter` for the pinned runtime.
+1. Run the pinned sequential structure benchmark adapter; queue-backed
+   `ToolAdapter` execution remains the next scaling step.
 2. Fold one record from each length bucket on GPU 0.
 3. Record wall time, peak GPU memory, output bytes, confidence fields, and errors.
 4. Kill one attempt intentionally and verify lease expiry, retry, and attempt

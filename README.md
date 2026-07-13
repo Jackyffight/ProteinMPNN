@@ -29,6 +29,7 @@ and Stage2a continuation datasets documented below.
 - Launcher: `run_train.sh`
 - Operational wrappers: `scripts/`
 - End-to-end integration project: `protein_mrna_pipeline/`
+- Pinned ESMFold2-Fast runbook: `protein_mrna_pipeline/docs/ESMFOLD2_FAST_RUNBOOK.md`
 - Final 2026 Stage2a model card: `MODEL_CARD_2026_STAGE2A.md`
 - mRNA bridge contract: `design_manifest.schema.json`
 - Training data location: `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/datasets/proteinmpnn/pdb_2021aug02`
