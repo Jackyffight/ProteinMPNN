@@ -201,3 +201,6 @@ the recorded cause with:
 ```bash
 RETRY_FAILED=1 scripts/evaluate_esmfold2_native_agreement.sh
 ```
+
+After this evaluation passes, the bounded official-vs-Stage2a design/refold
+comparison is defined in `PROTEINMPNN_REFOLD_PILOT.md`.

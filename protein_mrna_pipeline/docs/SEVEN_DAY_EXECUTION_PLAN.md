@@ -19,10 +19,11 @@ The promoted ProteinMPNN Stage2a checkpoint remains frozen. Another training run
 is not the default response to unused GPU capacity.
 
 Current execution checkpoint: the fixed benchmark, pinned runtime, four-bin
-smoke, and gated 40-record ESMFold2-Fast run are complete. All 40 records passed;
-the measured mean was 21.44 seconds per record and peak allocated GPU memory was
-23.19 GB. The next machine action is the CPU-only native-structure agreement
-evaluation. Exact commands and identities are in `ESMFOLD2_FAST_RUNBOOK.md`.
+smoke, 40-record ESMFold2-Fast run, and native-structure agreement evaluation
+are complete. All 40 records passed; mean native lDDT was 0.9319 and mean
+resolved-position TM-score was 0.9342. The next machine action is the bounded
+official-vs-Stage2a paired refold pilot documented in
+`PROTEINMPNN_REFOLD_PILOT.md`.
 
 ## Engineering Inputs
 

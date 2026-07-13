@@ -46,6 +46,8 @@ Implemented:
 - a checksum- and sequence-position-bound native-structure evaluator with
   C-alpha lDDT, RMSD, dual-normalized TM-score, coverage, length-bin summaries,
   and confidence correlations;
+- a four-backbone, 32-design paired official-vs-Stage2a ProteinMPNN generation
+  and ESMFold2 refold pilot with dual structural references;
 - a typed adapter boundary for future structure, ProteinMPNN, and mRNA workers.
 
 The installable JSON Schemas live beside the package source under
@@ -55,7 +57,7 @@ contract source of truth.
 Not implemented yet:
 
 - queue-backed multi-worker structure execution;
-- ProteinMPNN inference orchestration;
+- general-purpose ProteinMPNN inference orchestration beyond the bounded pilot;
 - synonymous CDS generation and mRNABERT adapters;
 - a real reviewed target package.
 
@@ -120,6 +122,8 @@ CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh smoke
 CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh full
 scripts/setup_structure_metrics_runtime.sh
 scripts/evaluate_esmfold2_native_agreement.sh
+scripts/run_proteinmpnn_refold_pilot.sh --dry-run
+scripts/run_proteinmpnn_refold_pilot.sh
 ```
 
 The full run is gated on a successful four-record smoke. Both modes are

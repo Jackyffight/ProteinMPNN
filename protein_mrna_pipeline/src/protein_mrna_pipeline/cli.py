@@ -15,11 +15,13 @@ from .contracts import (
     read_json,
     validate_document,
 )
+from .design_refold import evaluate_design_refolds, run_design_refolds
 from .esmfold2_runner import (
     create_runtime_manifest,
     run_esmfold2_benchmark,
     verify_esmfold2_benchmark_run,
 )
+from .proteinmpnn_pilot import generate_paired_design_pilot
 from .run_store import RunStore, initialize_run
 from .structure_agreement import (
     create_metrics_runtime_manifest,
@@ -120,6 +122,49 @@ def command_evaluate_esmfold2_native(args: argparse.Namespace) -> int:
         args.suite,
         args.prediction_run,
         args.dataset_dir,
+        args.output_dir,
+        args.metrics_runtime_root,
+        retry_failed=args.retry_failed,
+    )
+    print_json(summary)
+    return 0 if summary["status"] == "passed" else 1
+
+
+def command_generate_proteinmpnn_pilot(args: argparse.Namespace) -> int:
+    summary = generate_paired_design_pilot(
+        args.suite,
+        args.native_agreement_dir,
+        args.native_prediction_run,
+        args.dataset_dir,
+        args.official_checkpoint,
+        args.stage2a_checkpoint,
+        args.output_dir,
+        args.metrics_runtime_root,
+        args.repository_root,
+        seeds=tuple(args.seeds),
+        temperature=args.temperature,
+        device=args.device,
+    )
+    print_json(summary)
+    return 0 if summary["status"] == "passed" else 1
+
+
+def command_run_proteinmpnn_refolds(args: argparse.Namespace) -> int:
+    summary = run_design_refolds(
+        args.pilot_dir,
+        args.output_dir,
+        args.runtime_root,
+        retry_failed=args.retry_failed,
+        seed=args.seed,
+    )
+    print_json(summary)
+    return 0 if summary["status"] == "passed" else 1
+
+
+def command_evaluate_proteinmpnn_refolds(args: argparse.Namespace) -> int:
+    summary = evaluate_design_refolds(
+        args.pilot_dir,
+        args.refold_dir,
         args.output_dir,
         args.metrics_runtime_root,
         retry_failed=args.retry_failed,
@@ -272,6 +317,50 @@ def build_parser() -> argparse.ArgumentParser:
     agreement_parser.add_argument("--metrics-runtime-root", required=True)
     agreement_parser.add_argument("--retry-failed", action="store_true")
     agreement_parser.set_defaults(handler=command_evaluate_esmfold2_native)
+
+    proteinmpnn_parser = subparsers.add_parser(
+        "generate-proteinmpnn-refold-pilot",
+        help="generate paired official and Stage2a sequences on four fixed backbones",
+    )
+    proteinmpnn_parser.add_argument("--suite", required=True)
+    proteinmpnn_parser.add_argument("--native-agreement-dir", required=True)
+    proteinmpnn_parser.add_argument("--native-prediction-run", required=True)
+    proteinmpnn_parser.add_argument("--dataset-dir", required=True)
+    proteinmpnn_parser.add_argument("--official-checkpoint", required=True)
+    proteinmpnn_parser.add_argument("--stage2a-checkpoint", required=True)
+    proteinmpnn_parser.add_argument("--output-dir", required=True)
+    proteinmpnn_parser.add_argument("--metrics-runtime-root", required=True)
+    proteinmpnn_parser.add_argument("--repository-root", required=True)
+    proteinmpnn_parser.add_argument(
+        "--seeds", type=int, nargs="+", default=[11, 23, 42, 67]
+    )
+    proteinmpnn_parser.add_argument("--temperature", type=float, default=0.1)
+    proteinmpnn_parser.add_argument(
+        "--device", choices=("auto", "cpu", "cuda"), default="auto"
+    )
+    proteinmpnn_parser.set_defaults(handler=command_generate_proteinmpnn_pilot)
+
+    refold_parser = subparsers.add_parser(
+        "run-proteinmpnn-refolds",
+        help="refold every generated pilot sequence with pinned ESMFold2-Fast",
+    )
+    refold_parser.add_argument("--pilot-dir", required=True)
+    refold_parser.add_argument("--output-dir", required=True)
+    refold_parser.add_argument("--runtime-root", required=True)
+    refold_parser.add_argument("--seed", type=int, default=42)
+    refold_parser.add_argument("--retry-failed", action="store_true")
+    refold_parser.set_defaults(handler=command_run_proteinmpnn_refolds)
+
+    refold_eval_parser = subparsers.add_parser(
+        "evaluate-proteinmpnn-refolds",
+        help="compare pilot refolds with experimental and native-prediction references",
+    )
+    refold_eval_parser.add_argument("--pilot-dir", required=True)
+    refold_eval_parser.add_argument("--refold-dir", required=True)
+    refold_eval_parser.add_argument("--output-dir", required=True)
+    refold_eval_parser.add_argument("--metrics-runtime-root", required=True)
+    refold_eval_parser.add_argument("--retry-failed", action="store_true")
+    refold_eval_parser.set_defaults(handler=command_evaluate_proteinmpnn_refolds)
 
     enqueue_parser = subparsers.add_parser("enqueue", help="enqueue one work item")
     enqueue_parser.add_argument("--run-dir", required=True)

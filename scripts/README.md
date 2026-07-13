@@ -55,6 +55,9 @@ scripts/setup_structure_metrics_runtime.sh --dry-run
 scripts/setup_structure_metrics_runtime.sh
 scripts/evaluate_esmfold2_native_agreement.sh
 scripts/report_esmfold2_native_agreement.sh
+scripts/run_proteinmpnn_refold_pilot.sh --dry-run
+scripts/run_proteinmpnn_refold_pilot.sh
+scripts/report_proteinmpnn_refold_pilot.sh
 ```
 
 It reads only the validated 2026 v1 metadata, selects 40 cluster-unique native
@@ -74,6 +77,11 @@ Biotite metrics environment, verifies exact sequence-position correspondence,
 and compares the 40 predicted PDBs with resolved C-alpha coordinates in the v1
 tar shards. It leaves failed records explicit and uses no quality threshold for
 model or checkpoint selection.
+The paired refold pilot then compares official `v_48_020` and promoted Stage2a
+on four deterministic valid backbones, four paired seeds, and a shared
+ESMFold2-Fast oracle. It retains complete assembly context for ProteinMPNN but
+refolds only the designed target chain. See
+`protein_mrna_pipeline/docs/PROTEINMPNN_REFOLD_PILOT.md`.
 
 For A100:
 
