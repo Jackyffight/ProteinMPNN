@@ -18,6 +18,12 @@ The runtime is immutable at these identities:
 | Inference | loops 3, sampling steps 50, diffusion samples 1, chunk size 64 |
 | Benchmark seed | 42 |
 
+The full `Biohub/esm` source package currently requires Python 3.12. This
+single-chain runner intentionally does not install that package: it calls the
+pinned Biohub `transformers` implementation directly, whose pinned source
+supports Python 3.9 and newer. The project runner requires Python 3.10 and newer,
+so the GPU server's existing Python 3.11 + CUDA PyTorch environment is valid.
+
 Official sources:
 
 - <https://huggingface.co/biohub/ESMFold2-Fast>

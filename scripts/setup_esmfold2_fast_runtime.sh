@@ -53,8 +53,8 @@ command -v "$BASE_PYTHON" >/dev/null 2>&1 || {
   echo "Error: base Python not found: $BASE_PYTHON" >&2
   exit 1
 }
-"$BASE_PYTHON" -c 'import sys; assert sys.version_info >= (3, 11)' || {
-  echo "Error: ESMFold2 runtime requires Python 3.11 or newer." >&2
+"$BASE_PYTHON" -c 'import sys; assert sys.version_info >= (3, 10)' || {
+  echo "Error: the ESMFold2-Fast runner requires Python 3.10 or newer." >&2
   exit 1
 }
 
@@ -84,6 +84,7 @@ export HF_HOME="$RUNTIME_ROOT/hf-home"
 export HF_HUB_DOWNLOAD_TIMEOUT="${HF_HUB_DOWNLOAD_TIMEOUT:-3600}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
+"$SCRIPT_DIR/ensure_venv_pip.sh" "$RUNTIME_PYTHON"
 "$RUNTIME_PYTHON" -m pip install --no-cache-dir --upgrade \
   "transformers @ https://github.com/Biohub/transformers/archive/${TRANSFORMERS_COMMIT}.zip"
 

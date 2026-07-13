@@ -1,5 +1,7 @@
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -256,9 +258,43 @@ class ESMFold2RunnerTest(unittest.TestCase):
         self.assertIn(ESMFOLD2_FAST_REVISION, setup)
         self.assertIn(ESMC_6B_REVISION, setup)
         self.assertIn("verify-esmfold2-runtime", setup)
+        self.assertIn("ensure_venv_pip.sh", setup)
         self.assertNotIn("pip install esm@", setup)
         self.assertIn("this bounded runner is single-GPU", runner)
         self.assertIn("HF_HUB_OFFLINE=1", runner)
+
+    def test_missing_venv_pip_is_bootstrapped(self):
+        helper = PROJECT_ROOT.parent / "scripts/ensure_venv_pip.sh"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            marker = root / "pip-ready"
+            fake_python = root / "python"
+            fake_python.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "if [ \"${1:-}\" = -m ] && [ \"${2:-}\" = pip ]; then\n"
+                "  [ -f \"$FAKE_PIP_MARKER\" ]\n"
+                "  exit\n"
+                "fi\n"
+                "touch \"$FAKE_PIP_MARKER\"\n",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            bootstrap = root / "get-pip.py"
+            bootstrap.write_text("fixture bootstrap\n", encoding="utf-8")
+            bootstrap_hash = __import__("hashlib").sha256(bootstrap.read_bytes()).hexdigest()
+            environment = dict(os.environ)
+            environment.update(
+                {
+                    "FAKE_PIP_MARKER": str(marker),
+                    "VENV_PIP_BOOTSTRAP_URL": bootstrap.as_uri(),
+                    "VENV_PIP_BOOTSTRAP_SHA256": bootstrap_hash,
+                    "VENV_PIP_VERSION": "fixture",
+                    "TMPDIR": str(root / "tmp"),
+                }
+            )
+            subprocess.run([helper, fake_python], check=True, env=environment)
+            self.assertTrue(marker.is_file())
 
 
 if __name__ == "__main__":
