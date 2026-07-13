@@ -66,12 +66,24 @@ PY
 echo "base_torch_version: $BASE_TORCH_VERSION"
 
 mkdir -p "$RUNTIME_ROOT" "$RUNTIME_ROOT/tmp"
-if [ ! -x "$RUNTIME_ROOT/venv/bin/python" ]; then
-  "$BASE_PYTHON" -m venv --system-site-packages "$RUNTIME_ROOT/venv"
+if [ ! -x "$RUNTIME_ROOT/venv/bin/python" ] || \
+  [ ! -f "$RUNTIME_ROOT/venv/pyvenv.cfg" ]; then
+  "$BASE_PYTHON" -m venv --without-pip --system-site-packages "$RUNTIME_ROOT/venv"
 fi
 RUNTIME_PYTHON="$RUNTIME_ROOT/venv/bin/python"
-"$RUNTIME_PYTHON" -c 'import sys; assert sys.version_info >= (3, 11)' || {
-  echo "Error: existing metrics venv uses Python older than 3.11." >&2
+"$RUNTIME_PYTHON" - "$RUNTIME_ROOT/venv" <<'PY' || {
+from pathlib import Path
+import sys
+
+expected_prefix = Path(sys.argv[1]).resolve()
+if sys.version_info < (3, 11):
+    raise SystemExit("metrics venv uses Python older than 3.11")
+if Path(sys.prefix).resolve() != expected_prefix:
+    raise SystemExit(
+        f"metrics venv prefix mismatch: expected={expected_prefix} observed={sys.prefix}"
+    )
+PY
+  echo "Error: existing metrics venv has an invalid Python version or prefix." >&2
   exit 1
 }
 export TMPDIR="$RUNTIME_ROOT/tmp"

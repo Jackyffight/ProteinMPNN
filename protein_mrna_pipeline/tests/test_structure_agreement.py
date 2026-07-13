@@ -1,6 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -390,6 +391,43 @@ class StructureAgreementTest(unittest.TestCase):
         self.assertIn('export OMP_NUM_THREADS="$METRICS_THREADS"', runner)
         self.assertIn('[[ "$METRICS_THREADS" =~ ^[1-4]$ ]]', runner)
         self.assertIn("evaluate-esmfold2-native", runner)
+
+    def test_runtime_venvs_do_not_require_system_ensurepip(self):
+        setup_paths = (
+            PROJECT_ROOT.parent / "scripts/setup_structure_metrics_runtime.sh",
+            PROJECT_ROOT.parent / "scripts/setup_esmfold2_fast_runtime.sh",
+        )
+        for path in setup_paths:
+            setup = path.read_text(encoding="utf-8")
+            self.assertIn(
+                '-m venv --without-pip --system-site-packages',
+                setup,
+                msg=f"{path.name} must bootstrap pip after venv creation",
+            )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            venv_dir = Path(temp_dir) / "venv"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "venv",
+                    "--without-pip",
+                    "--system-site-packages",
+                    str(venv_dir),
+                ],
+                check=True,
+            )
+            observed_prefix = subprocess.run(
+                [
+                    venv_dir / "bin/python",
+                    "-c",
+                    "import sys; print(sys.prefix)",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            self.assertEqual(Path(observed_prefix).resolve(), venv_dir.resolve())
 
 
 if __name__ == "__main__":

@@ -88,10 +88,24 @@ if [ "$available_bytes" -lt "$required_bytes" ] && [ "${ALLOW_LOW_DISK:-0}" != 1
   exit 1
 fi
 
-if [ ! -x "$RUNTIME_ROOT/venv/bin/python" ]; then
-  "$BASE_PYTHON" -m venv --system-site-packages "$RUNTIME_ROOT/venv"
+if [ ! -x "$RUNTIME_ROOT/venv/bin/python" ] || \
+  [ ! -f "$RUNTIME_ROOT/venv/pyvenv.cfg" ]; then
+  "$BASE_PYTHON" -m venv --without-pip --system-site-packages "$RUNTIME_ROOT/venv"
 fi
 RUNTIME_PYTHON="$RUNTIME_ROOT/venv/bin/python"
+"$RUNTIME_PYTHON" - "$RUNTIME_ROOT/venv" <<'PY' || {
+from pathlib import Path
+import sys
+
+expected_prefix = Path(sys.argv[1]).resolve()
+if Path(sys.prefix).resolve() != expected_prefix:
+    raise SystemExit(
+        f"ESMFold2 venv prefix mismatch: expected={expected_prefix} observed={sys.prefix}"
+    )
+PY
+  echo "Error: existing ESMFold2 venv does not use the expected prefix." >&2
+  exit 1
+}
 export TMPDIR="$RUNTIME_ROOT/tmp"
 export HF_HOME="$RUNTIME_ROOT/hf-home"
 export HF_HUB_DOWNLOAD_TIMEOUT="${HF_HUB_DOWNLOAD_TIMEOUT:-3600}"
