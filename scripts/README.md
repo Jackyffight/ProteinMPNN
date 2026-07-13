@@ -54,6 +54,7 @@ CUDA_VISIBLE_DEVICES=0 scripts/run_esmfold2_fast.sh full
 scripts/setup_structure_metrics_runtime.sh --dry-run
 scripts/setup_structure_metrics_runtime.sh
 scripts/evaluate_esmfold2_native_agreement.sh
+scripts/report_esmfold2_native_agreement.sh
 ```
 
 It reads only the validated 2026 v1 metadata, selects 40 cluster-unique native

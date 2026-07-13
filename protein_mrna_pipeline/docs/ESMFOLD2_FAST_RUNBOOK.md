@@ -149,6 +149,7 @@ evaluation:
 scripts/setup_structure_metrics_runtime.sh --dry-run
 scripts/setup_structure_metrics_runtime.sh
 scripts/evaluate_esmfold2_native_agreement.sh
+scripts/report_esmfold2_native_agreement.sh
 ```
 
 The metrics runtime pins Biotite 1.6.0, Biotraj 1.2.2, NumPy 2.4.6, and SciPy

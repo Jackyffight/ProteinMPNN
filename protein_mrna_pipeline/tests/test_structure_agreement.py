@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -428,6 +429,84 @@ class StructureAgreementTest(unittest.TestCase):
                 text=True,
             ).stdout.strip()
             self.assertEqual(Path(observed_prefix).resolve(), venv_dir.resolve())
+
+    def test_native_agreement_report_prints_lowest_lddt_first(self):
+        report = PROJECT_ROOT.parent / "scripts/report_esmfold2_native_agreement.sh"
+
+        def stats(first, second):
+            return {
+                "mean": (first + second) / 2,
+                "median": (first + second) / 2,
+                "min": min(first, second),
+                "max": max(first, second),
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            evaluation_dir = Path(temp_dir)
+            identity = "fixture-evaluation"
+            summary = {
+                "schema_version": "protein-mrna.native-agreement-summary.v1",
+                "evaluation_identity": identity,
+                "status": "passed",
+                "records": {
+                    "selected": 2,
+                    "succeeded": 2,
+                    "failed": 0,
+                    "pending": 0,
+                },
+                "overall": {
+                    "ca_lddt": stats(0.7, 0.9),
+                    "ca_tm_score_resolved": stats(0.8, 0.95),
+                    "ca_tm_score_full_length": stats(0.75, 0.9),
+                    "ca_rmsd_angstrom": stats(1.0, 4.0),
+                    "native_ca_coverage": stats(0.9, 1.0),
+                },
+                "confidence_correlations": {
+                    "mean_plddt_vs_ca_lddt_pearson": 0.3,
+                    "predicted_ptm_vs_ca_tm_full_length_pearson": 0.7,
+                },
+            }
+            write_json(evaluation_dir / "summary.json", summary)
+            records = []
+            for record_id, lddt in (("record-high", 0.9), ("record-low", 0.7)):
+                records.append(
+                    {
+                        "evaluation_identity": identity,
+                        "benchmark_record_id": record_id,
+                        "source_chain_id": f"{record_id}_A",
+                        "sequence_length": 100,
+                        "status": "succeeded",
+                        "metrics": {
+                            "ca_lddt": lddt,
+                            "ca_tm_score_resolved": 0.8,
+                            "ca_tm_score_full_length": 0.75,
+                            "ca_rmsd_angstrom": 2.0,
+                            "native_ca_coverage": 0.9,
+                        },
+                        "prediction_confidence": {
+                            "mean_plddt": 0.85,
+                            "ptm": 0.75,
+                        },
+                    }
+                )
+            (evaluation_dir / "records.jsonl").write_text(
+                "".join(json.dumps(record) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [report, "1"],
+                check=True,
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "EVAL_DIR": str(evaluation_dir),
+                    "PROTEINMPNN_PYTHON": sys.executable,
+                },
+            )
+            self.assertIn("record-low", completed.stdout)
+            self.assertNotIn("record-high", completed.stdout)
+            self.assertNotIn("jq ", report.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
