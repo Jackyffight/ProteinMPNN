@@ -79,6 +79,29 @@ The pilot exposes exactly one GPU. ProteinMPNN generation should finish quickly;
 the 32 sequential ESMFold2 refolds are expected to dominate runtime. Based on
 the fixed native benchmark, the expected wall time is roughly 10-25 minutes.
 
+## Observed Result
+
+The fixed run completed on 2026-07-13 with 32/32 successful refolds and all 16
+declared pairs. Aggregate Stage2a-minus-official results were:
+
+| Metric | Official | Stage2a | Delta | Direction-aware Stage2a wins |
+| --- | ---: | ---: | ---: | ---: |
+| Experimental CA lDDT | 0.8937 | 0.8968 | +0.0031 | 6/16 |
+| Experimental CA TM, resolved | 0.8254 | 0.7755 | -0.0499 | 6/16 |
+| Experimental CA TM, full length | 0.7762 | 0.7267 | -0.0495 | 6/16 |
+| Experimental CA RMSD, Angstrom | 4.2585 | 4.9650 | +0.7065 | 6/16 |
+| Native-fold-reference lDDT | 0.8705 | 0.8657 | -0.0048 | 4/16 |
+| Native-fold-reference TM | 0.7473 | 0.7133 | -0.0340 | 4/16 |
+| Native-fold-reference RMSD, Angstrom | 8.2687 | 9.6118 | +1.3430 | 6/16 |
+
+Execution status `passed` means the workflow and artifacts completed; it is not
+a model-quality pass. The observed local lDDT gain was outweighed by worse
+global TM-score, RMSD, pTM, and native-prediction-reference agreement. Stage2a
+therefore remains the promoted NLL continuation artifact but is not the generic
+redesign default. Official `v_48_020` remains the operational baseline. Review
+the per-backbone report before deciding whether a larger frozen valid benchmark
+is worth running; do not respond by adding Stage2a epochs or reopening test data.
+
 ## Outputs
 
 Default root:

@@ -5,6 +5,11 @@
 This is the promoted final checkpoint for the current 2026 continuation track.
 No additional training is required for this release.
 
+Promotion records success on the declared native-sequence NLL gates. A later
+paired redesign/refold pilot did not qualify Stage2a as the generic design
+default; the official `v_48_020` checkpoint remains the operational baseline
+for unconstrained generic redesign until broader evidence changes that policy.
+
 | Field | Value |
 | --- | --- |
 | Model ID | `proteinmpnn-2026-stage2a` |
@@ -17,6 +22,7 @@ No additional training is required for this release.
 | Promotion code | Git commit `3653357` |
 | Selection rule | Lowest stage2a validation NLL subject to the v1 NLL regression gate |
 | Test status | Passed on both stage2a and v1 held-out populations |
+| Generic redesign qualification | Did not outperform official `v_48_020` in the bounded paired refold pilot |
 
 The absolute path used on the training workspace was:
 
@@ -169,16 +175,47 @@ The final test status is `passed`. The positive result on 13 Stage2a test
 records is directionally useful but statistically small; it must not be treated
 as a broad long-complex benchmark by itself.
 
+### Paired Design/Refold Qualification
+
+After promotion, a fixed valid-split engineering pilot compared Stage2a with
+official `v_48_020` on four deliberately stratified backbones, four paired
+ProteinMPNN seeds, temperature `0.1`, and one shared pinned ESMFold2-Fast
+refolder. All 32 refolds succeeded, producing 16 same-backbone, same-seed
+comparisons.
+
+| Metric | Official | Stage2a | Stage2a delta | Direction-aware Stage2a wins |
+| --- | ---: | ---: | ---: | ---: |
+| Experimental CA lDDT | 0.8937 | 0.8968 | +0.0031 | 6/16 |
+| Experimental CA TM, resolved | 0.8254 | 0.7755 | -0.0499 | 6/16 |
+| Experimental CA TM, full length | 0.7762 | 0.7267 | -0.0495 | 6/16 |
+| Experimental CA RMSD, Angstrom | 4.2585 | 4.9650 | +0.7065 | 6/16 |
+| Native-fold-reference CA lDDT | 0.8705 | 0.8657 | -0.0048 | 4/16 |
+| Native-fold-reference TM | 0.7473 | 0.7133 | -0.0340 | 4/16 |
+| Native-fold-reference RMSD, Angstrom | 8.2687 | 9.6118 | +1.3430 | 6/16 |
+
+The small local lDDT gain did not translate into global fold recovery: both TM
+normalizations, RMSD, refold pTM, and the independent native-sequence prediction
+reference favored the official checkpoint on average. This does not revoke the
+NLL-based release or its provenance. It limits the operational claim: Stage2a
+is a continuation/scoring and comparison artifact, not the preferred generic
+redesign checkpoint on current evidence. The four-backbone pilot is too small
+for a universal model ranking, so task-specific use still requires a paired
+official baseline and refold evaluation.
+
 ## Intended Use
 
 Use this release for:
 
-- internal ProteinMPNN sequence generation and sequence scoring
+- internal ProteinMPNN sequence scoring and controlled candidate generation
 - comparison with the official and promoted Stage-1 checkpoints
 - the ProteinMPNN stage of the ESMFold2 -> ProteinMPNN -> ESMFold2 -> mRNABERT
   pipeline
 - initialization of a separately approved future experiment, without restoring
   this checkpoint's optimizer
+
+Do not use Stage2a as the sole generic redesign default. For generic backbone
+redesign, keep official `v_48_020` as the baseline and include Stage2a only as a
+paired arm until a broader frozen benchmark demonstrates otherwise.
 
 Do not use the current evidence as proof of protein function, binding, folding,
 expression, safety, or wet-lab success. Do not use it for clinical decisions.
@@ -235,6 +272,9 @@ document.
 - This is continued training from public weights, not a from-scratch retraining
   on a complete 2026 corpus.
 - Stage2a test evidence contains only 13 records and one training seed.
+- The four-backbone paired redesign/refold pilot favored official `v_48_020` on
+  global TM-score, RMSD, and native-fold-reference metrics despite a small local
+  lDDT increase.
 - Training and checkpoint selection optimize native-sequence NLL/recovery, not
   refold quality, interface recovery, function, stability, or expression.
 - Context was bounded to 2,000 residues. Stage2a crops can omit distant chains
@@ -273,8 +313,9 @@ and broader product validation, not automatic additional epochs.
 
 ### P1: Validate Design Quality
 
-1. Compare official, Stage 1, and Stage2a models on the same frozen design set
-   across several sampling temperatures and seeds.
+1. Extend the completed four-backbone official-vs-Stage2a pilot only on a new
+   frozen design matrix; include Stage 1 and additional temperatures only if
+   their decision purpose is declared first.
 2. Refold generated sequences with the chosen structure predictor and report
    paired structure recovery, confidence, backbone deviation, interface quality,
    clashes, sequence diversity, and failure rates.
@@ -324,3 +365,5 @@ the current two-epoch Stage2a run is not the approved next step.
 - Validation gate: `scripts/evaluate_2026_stage2a_checkpoints.sh`
 - One-shot test gate: `scripts/evaluate_2026_stage2a_selected_test.sh`
 - Promotion entry point: `scripts/promote_2026_stage2a.sh`
+- Paired redesign/refold evidence:
+  `protein_mrna_pipeline/docs/PROTEINMPNN_REFOLD_PILOT.md`

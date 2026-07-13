@@ -592,6 +592,22 @@ class ProteinMPNNPilotTest(unittest.TestCase):
                         }
                         for label in ("official-v48-020", "stage2a")
                     },
+                    "by_backbone": {
+                        f"record-{index:04d}": {
+                            label: {
+                                field: {
+                                    "mean": (
+                                        0.8
+                                        if label == "official-v48-020"
+                                        else 0.85
+                                    )
+                                }
+                                for field in fields
+                            }
+                            for label in ("official-v48-020", "stage2a")
+                        }
+                        for index in range(1, 5)
+                    },
                     "paired": {
                         "pairs": 16,
                         "stage2a_wins": {"experimental_ca_lddt": 12},
@@ -616,6 +632,8 @@ class ProteinMPNNPilotTest(unittest.TestCase):
             self.assertIn("paired comparisons: 16", completed.stdout)
             self.assertIn("experimental CA lDDT", completed.stdout)
             self.assertIn("+0.0500", completed.stdout)
+            self.assertIn("per-backbone delta", completed.stdout)
+            self.assertIn("record-0004", completed.stdout)
 
 
 if __name__ == "__main__":

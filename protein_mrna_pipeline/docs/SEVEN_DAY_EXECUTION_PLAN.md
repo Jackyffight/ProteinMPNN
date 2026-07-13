@@ -19,11 +19,13 @@ The promoted ProteinMPNN Stage2a checkpoint remains frozen. Another training run
 is not the default response to unused GPU capacity.
 
 Current execution checkpoint: the fixed benchmark, pinned runtime, four-bin
-smoke, 40-record ESMFold2-Fast run, and native-structure agreement evaluation
-are complete. All 40 records passed; mean native lDDT was 0.9319 and mean
-resolved-position TM-score was 0.9342. The next machine action is the bounded
-official-vs-Stage2a paired refold pilot documented in
-`PROTEINMPNN_REFOLD_PILOT.md`.
+smoke, 40-record ESMFold2-Fast run, native-structure agreement evaluation, and
+the bounded official-vs-Stage2a paired refold pilot are complete. All 32 pilot
+refolds passed operationally, but Stage2a regressed global fold recovery versus
+official `v_48_020` (TM-full `-0.0495`, experimental RMSD `+0.7065` Angstrom,
+native-fold-reference RMSD `+1.3430` Angstrom). The next action is CPU-only
+per-backbone review. Do not launch more Stage2a training or use held-out test
+data to respond to this result.
 
 ## Engineering Inputs
 

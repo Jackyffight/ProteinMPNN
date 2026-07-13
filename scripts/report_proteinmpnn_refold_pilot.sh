@@ -50,6 +50,13 @@ def mean(label, field):
     return number(summary["by_model"][label][field]["mean"], f"{label}/{field}")
 
 
+def backbone_mean(record_id, label, field):
+    return number(
+        summary["by_backbone"][record_id][label][field]["mean"],
+        f"{record_id}/{label}/{field}",
+    )
+
+
 official = "official-v48-020"
 stage2a = "stage2a"
 counts = summary["records"]
@@ -121,6 +128,36 @@ for record in manifest["selection"]["records"]:
     print(
         f"  {record['selection_role']}: {record['benchmark_record_id']} "
         f"chain={record['source_chain_id']} length={record['sequence_length']}"
+    )
+
+print()
+print("per-backbone delta (stage2a - official):")
+print(
+    f"{'record':<12} {'len':>5} {'lDDT':>8} {'TM-res':>8} "
+    f"{'TM-full':>8} {'RMSD':>8} {'ref-TM':>8} {'ref-RMSD':>9}"
+)
+for record in manifest["selection"]["records"]:
+    record_id = record["benchmark_record_id"]
+    deltas = {
+        field: backbone_mean(record_id, stage2a, field)
+        - backbone_mean(record_id, official, field)
+        for field in (
+            "experimental_ca_lddt",
+            "experimental_ca_tm_score_resolved",
+            "experimental_ca_tm_score_full_length",
+            "experimental_ca_rmsd_angstrom",
+            "native_prediction_ca_tm_score",
+            "native_prediction_ca_rmsd_angstrom",
+        )
+    }
+    print(
+        f"{record_id:<12} {record['sequence_length']:>5} "
+        f"{deltas['experimental_ca_lddt']:>+8.4f} "
+        f"{deltas['experimental_ca_tm_score_resolved']:>+8.4f} "
+        f"{deltas['experimental_ca_tm_score_full_length']:>+8.4f} "
+        f"{deltas['experimental_ca_rmsd_angstrom']:>+8.3f} "
+        f"{deltas['native_prediction_ca_tm_score']:>+8.4f} "
+        f"{deltas['native_prediction_ca_rmsd_angstrom']:>+9.3f}"
     )
 
 print()
