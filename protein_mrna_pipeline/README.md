@@ -17,6 +17,11 @@ This project owns their contracts, provenance, queue state, hard checks, and
 candidate tables. It does not vendor their weights or hide their component
 scores behind one scalar.
 
+The accepted low-cost deployment target is one sequential 48 GB A40 or RTX
+A6000 worker with Evo 2 7B, not Evo 2 20B or an always-on Hopper system. See
+`docs/AFFORDABLE_GPU_DEPLOYMENT.md` for the capacity audit, cloud price snapshot,
+runtime profiles, and acceptance gate.
+
 The project has two separate lanes:
 
 - the active **engineering benchmark lane** uses fixed native sequences from the
