@@ -15,6 +15,7 @@ sys.path.insert(0, str(REPO_ROOT / "protein_mrna_pipeline" / "src"))
 
 from design_flow_stage3.esmfold2_job_runner import (  # noqa: E402
     JOB_SCHEMA,
+    SELECTION_SCHEMA,
     _identity,
     job_fasta_bytes,
     pack_results,
@@ -23,6 +24,7 @@ from design_flow_stage3.esmfold2_job_runner import (  # noqa: E402
     validate_job_directory,
     verify_run,
 )
+from protein_mrna_pipeline.contracts import document_sha256  # noqa: E402
 from protein_mrna_pipeline.esmfold2_runner import (  # noqa: E402
     BIOHUB_TRANSFORMERS_COMMIT,
     BIOHUB_TRANSFORMERS_VERSION,
@@ -72,7 +74,7 @@ def runtime_fixture() -> dict:
     return document
 
 
-def write_job(root: Path) -> Path:
+def write_job(root: Path, *, with_selection: bool = False) -> Path:
     root.mkdir()
     records = [
         {
@@ -126,6 +128,42 @@ def write_job(root: Path) -> Path:
             "records": len(records),
         },
     }
+    if with_selection:
+        selection_records = [
+            {
+                "candidate_key": record["candidate_key"],
+                "amino_acid_sha256": record["sequence_sha256"],
+                "aa_length": record["length"],
+                "selection_tier": "fixture",
+                "priority_proxy": None,
+            }
+            for record in records
+        ]
+        selection = {
+            "schema_version": SELECTION_SCHEMA,
+            "selection_id": document_sha256(
+                {
+                    "search_identity": "fixture-search",
+                    "records": selection_records,
+                    "budget": len(selection_records),
+                }
+            ),
+            "project_id": "fixture-project",
+            "design_round_id": "round-000",
+            "search_identity": "fixture-search",
+            "budget": len(selection_records),
+            "records": selection_records,
+            "limitations": [],
+        }
+        selection_path = root / "selection.json"
+        write_json(selection_path, selection)
+        job["selection"] = {
+            "schema_version": SELECTION_SCHEMA,
+            "selection_id": selection["selection_id"],
+            "search_identity": selection["search_identity"],
+            "sha256": hashlib.sha256(selection_path.read_bytes()).hexdigest(),
+            "records": len(selection_records),
+        }
     job["job_identity"] = _identity(job, "job_identity")
     write_json(root / "job-manifest.json", job)
     return root
@@ -235,6 +273,27 @@ class Stage3WorkerTests(unittest.TestCase):
             with tarfile.open(result_archive, "r:gz") as bundle:
                 self.assertIn("run-manifest.json", bundle.getnames())
                 self.assertIn("records/candidate-alpha/prediction.pdb", bundle.getnames())
+
+    def test_selection_snapshot_is_bound_to_job_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            source_job = write_job(root / "source-job", with_selection=True)
+            job_archive = root / "job.tar.gz"
+            with tarfile.open(job_archive, "w:gz") as bundle:
+                names = ("job-manifest.json", "selection.json", "sequences.fasta")
+                for name in names:
+                    bundle.add(source_job / name, arcname=name)
+            unpacked = root / "unpacked"
+            validated = unpack_job_archive(job_archive, unpacked)
+            self.assertEqual(validated["job"]["selection"]["records"], 2)
+
+            selection = json.loads(
+                (unpacked / "selection.json").read_text(encoding="utf-8")
+            )
+            selection["records"][0]["aa_length"] += 1
+            write_json(unpacked / "selection.json", selection)
+            with self.assertRaisesRegex(ValueError, "selection identity mismatch"):
+                validate_job_directory(unpacked)
 
     def test_launcher_uses_separate_absolute_runtime_and_single_gpu(self) -> None:
         launcher = (REPO_ROOT / "design_flow_stage3/run_stage3_esmfold2.sh").read_text()

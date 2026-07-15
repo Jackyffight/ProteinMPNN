@@ -35,12 +35,15 @@ from protein_mrna_pipeline.run_store import write_json_atomic
 
 
 JOB_SCHEMA = "vaxflow.esmfold2-job.v1"
+SELECTION_SCHEMA = "vaxflow.stage3-selection.v1"
 RUN_SCHEMA = "vaxflow.esmfold2-run.v1"
 RESULT_SCHEMA = "vaxflow.esmfold2-result.v1"
 SUMMARY_SCHEMA = "vaxflow.esmfold2-summary.v1"
 CANONICAL_AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-JOB_FILES = frozenset({"job-manifest.json", "sequences.fasta"})
+REQUIRED_JOB_FILES = frozenset({"job-manifest.json", "sequences.fasta"})
+OPTIONAL_JOB_FILES = frozenset({"selection.json"})
+ALLOWED_JOB_FILES = REQUIRED_JOB_FILES | OPTIONAL_JOB_FILES
 
 
 def utc_now() -> str:
@@ -113,6 +116,75 @@ def _validate_parameters(execution: object) -> dict[str, int]:
     return normalized
 
 
+def _validate_selection_snapshot(root: Path, job: dict, records: list[dict]) -> None:
+    descriptor = job.get("selection")
+    if descriptor is None:
+        return
+    if not isinstance(descriptor, dict):
+        raise ContractError("job selection descriptor must be an object")
+
+    selection_path = root / "selection.json"
+    if not selection_path.is_file():
+        raise ContractError("job selection descriptor requires selection.json")
+    selection = read_json(selection_path)
+    selection_records = selection.get("records")
+    budget = selection.get("budget")
+    search_identity = selection.get("search_identity")
+    if (
+        selection.get("schema_version") != SELECTION_SCHEMA
+        or selection.get("project_id") != job["source"]["project_id"]
+        or not isinstance(selection.get("design_round_id"), str)
+        or not selection["design_round_id"]
+        or not isinstance(search_identity, str)
+        or not search_identity
+        or not isinstance(selection_records, list)
+        or not selection_records
+        or not isinstance(budget, int)
+        or isinstance(budget, bool)
+        or budget < len(selection_records)
+    ):
+        raise ContractError("job selection snapshot is invalid or mismatched")
+
+    expected_selection_id = document_sha256(
+        {
+            "search_identity": search_identity,
+            "records": selection_records,
+            "budget": budget,
+        }
+    )
+    if selection.get("selection_id") != expected_selection_id:
+        raise ContractError("job selection identity mismatch")
+    expected_descriptor = {
+        "schema_version": SELECTION_SCHEMA,
+        "selection_id": expected_selection_id,
+        "search_identity": search_identity,
+        "sha256": sha256_file(selection_path),
+        "records": len(selection_records),
+    }
+    if descriptor != expected_descriptor:
+        raise ContractError("job selection descriptor differs from selection.json")
+    if len(selection_records) != len(records):
+        raise ContractError("job selection and folding record counts differ")
+
+    seen: set[str] = set()
+    paired_records = zip(selection_records, records, strict=True)
+    for index, (selected, record) in enumerate(paired_records):
+        if not isinstance(selected, dict):
+            raise ContractError(f"job selection record {index} must be an object")
+        candidate_key = selected.get("candidate_key")
+        if not isinstance(candidate_key, str) or candidate_key in seen:
+            raise ContractError(f"job selection record {index} has an invalid candidate key")
+        seen.add(candidate_key)
+        if (
+            candidate_key != record["candidate_key"]
+            or selected.get("amino_acid_sha256") != record["sequence_sha256"]
+            or selected.get("aa_length") != record["length"]
+        ):
+            raise ContractError(
+                f"job selection record {candidate_key} differs from folding records"
+            )
+
+
 def validate_job_directory(job_dir: str | Path) -> dict:
     root = Path(job_dir).expanduser().resolve()
     if not root.is_dir():
@@ -125,9 +197,11 @@ def validate_job_directory(job_dir: str | Path) -> dict:
     symlinks = [path for path in root.rglob("*") if path.is_symlink()]
     if symlinks:
         raise ContractError(f"job directory contains symlinks: {symlinks}")
-    if present != JOB_FILES:
+    if not REQUIRED_JOB_FILES <= present or not present <= ALLOWED_JOB_FILES:
         raise ContractError(
-            f"job directory must contain exactly {sorted(JOB_FILES)}; observed={sorted(present)}"
+            "job directory has missing or unexpected files; "
+            f"required={sorted(REQUIRED_JOB_FILES)} "
+            f"allowed={sorted(ALLOWED_JOB_FILES)} observed={sorted(present)}"
         )
 
     manifest_path = root / "job-manifest.json"
@@ -149,6 +223,14 @@ def validate_job_directory(job_dir: str | Path) -> dict:
         for name in required_source
     ):
         raise ContractError("job source lineage is incomplete")
+    expected_files = set(REQUIRED_JOB_FILES)
+    if job.get("selection") is not None:
+        expected_files.add("selection.json")
+    if present != expected_files:
+        raise ContractError(
+            "job files do not match the manifest selection descriptor; "
+            f"expected={sorted(expected_files)} observed={sorted(present)}"
+        )
     _validate_requested_model(job.get("model"))
     parameters = _validate_parameters(job.get("execution"))
 
@@ -184,6 +266,8 @@ def validate_job_directory(job_dir: str | Path) -> dict:
             )
         if record.get("sequence_sha256") != text_sha256(sequence):
             raise ContractError(f"record {candidate_id} sequence SHA256 mismatch")
+
+    _validate_selection_snapshot(root, job, records)
 
     fasta = job_fasta_bytes(records)
     fasta_document = job.get("fasta")
@@ -520,14 +604,20 @@ def unpack_job_archive(archive: str | Path, destination: str | Path) -> dict:
     try:
         with tarfile.open(source, "r:gz") as bundle:
             members = bundle.getmembers()
-            names = {member.name for member in members if member.isfile()}
-            if names != JOB_FILES or any(
-                member.issym()
-                or member.islnk()
-                or member.isdev()
-                or Path(member.name).is_absolute()
-                or ".." in Path(member.name).parts
-                for member in members
+            file_names = [member.name for member in members if member.isfile()]
+            names = set(file_names)
+            if (
+                len(file_names) != len(names)
+                or not REQUIRED_JOB_FILES <= names
+                or not names <= ALLOWED_JOB_FILES
+                or any(
+                    member.issym()
+                    or member.islnk()
+                    or member.isdev()
+                    or Path(member.name).is_absolute()
+                    or ".." in Path(member.name).parts
+                    for member in members
+                )
             ):
                 raise ContractError("job archive has unexpected or unsafe members")
             for member in members:

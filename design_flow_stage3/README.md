@@ -6,18 +6,23 @@ by `mRNABERT/design-flow`, reuses the already deployed pinned ESMFold2-Fast
 runtime, and writes resumable per-candidate structure results.
 
 The worker does not generate candidates and does not modify ProteinMPNN training
-runs. A job archive must contain exactly:
+runs. A legacy job archive contains:
 
 - `job-manifest.json`
 - `sequences.fasta`
 
+Evidence-guided searches also include `selection.json`. The worker verifies that
+its checksum, selection identity, project, record order, candidate keys, sequence
+checksums, and lengths match the folding manifest before loading the model.
+
 Run on the GPU server:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 \
-  /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/design_flow_stage3/run_stage3_esmfold2.sh \
+/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/ProteinMPNN/design_flow_stage3/run_stage3_esmfold2.sh \
   /mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/transfer/stage3-job.tar.gz
 ```
+
+The wrapper defaults to physical GPU 0 when no device override is supplied.
 
 The wrapper validates and safely unpacks the archive, loads the existing runtime
 from `/mnt/bn/neptune/mlx/users/wangzhi.wit/playground/models/MPNN/structure_runtime/esmfold2-fast`,
